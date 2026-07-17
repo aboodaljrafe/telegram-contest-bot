@@ -295,13 +295,13 @@ def user_prediction_interface(call):
     match = cursor.fetchone()
     
     if not match:
-        bot.answer_callback_query(call.id, "المباراة غير موجودة.")
+        bot.send_message(call.message.chat.id, "❌ المباراة غير موجودة.")
         conn.close()
         return
         
     home, away, m_type, s_time = match
     if datetime.now() > datetime.strptime(s_time, "%Y-%m-%d %H:%M"):
-        bot.answer_callback_query(call.id, "🔒 عذراً، بدأت المباراة وتم إغلاق استقبال التوقعات تلقائياً!", show_alert=True)
+        bot.send_message(call.message.chat.id, "🔒 عذراً، بدأت المباراة وتم إغلاق استقبال التوقعات تلقائياً!")
         bot.delete_message(call.message.chat.id, call.message.message_id)
         conn.close()
         return
@@ -356,7 +356,7 @@ def render_prediction_keyboard(message, user_id, home, away):
 def handle_user_adjustments(call):
     user_id = call.from_user.id
     if user_id not in USER_SESSION:
-        bot.answer_callback_query(call.id, "انتهت الجلسة، الرجاء إعادة الضغط من زر التوقعات المتاحة.")
+        bot.send_message(call.message.chat.id, "⚠️ انتهت الجلسة، الرجاء إعادة الضغط من زر التوقعات المتاحة.")
         return
         
     action = call.data
@@ -379,7 +379,7 @@ def handle_user_adjustments(call):
         db_match = cursor.fetchone()
         
         if not db_match or datetime.now() > datetime.strptime(db_match[0], "%Y-%m-%d %H:%M"):
-            bot.answer_callback_query(call.id, "🔒 عذراً، انتهت المهلة المحددة! انطلقت المباراة وتم قفل استقبال البيانات.", show_alert=True)
+            bot.send_message(call.message.chat.id, "🔒 عذراً، انتهت المهلة المحددة! انطلقت المباراة وتم قفل استقبال البيانات.")
             bot.delete_message(call.message.chat.id, call.message.message_id)
             conn.close()
             USER_SESSION.pop(user_id, None)
@@ -594,7 +594,7 @@ def handle_admin_actions(call):
         matches = cursor.fetchall()
         conn.close()
         if not matches:
-            bot.answer_callback_query(call.id, "لا توجد مباريات نشطة بحاجة لرصد.")
+            bot.send_message(call.message.chat.id, "❌ لا توجد مباريات نشطة بحاجة لرصد حالياً.")
             return
         markup = InlineKeyboardMarkup(row_width=1)
         for m in matches:
@@ -609,7 +609,7 @@ def handle_admin_actions(call):
         matches = cursor.fetchall()
         conn.close()
         if not matches:
-            bot.answer_callback_query(call.id, "لا توجد مباريات نشطة لحذفها.")
+            bot.send_message(call.message.chat.id, "❌ لا توجد مباريات نشطة لحذفها حالياً.")
             return
         markup = InlineKeyboardMarkup(row_width=1)
         for m in matches:
@@ -741,7 +741,7 @@ def handle_user_management_callbacks(call):
             new_ban = 1 if res[0] == 0 else 0
             cursor.execute("UPDATE users SET banned=? WHERE user_id=?", (new_ban, uid))
             conn.commit()
-            bot.answer_callback_query(call.id, "🚫 تم حظر المشترك بنجاح!" if new_ban==1 else "🟢 تم إلغاء حظر المشترك!", show_alert=True)
+            bot.send_message(call.message.chat.id, "🚫 تم حظر المشترك بنجاح!" if new_ban==1 else "🟢 تم إلغاء حظر المشترك بنجاح!")
         conn.close()
         render_single_user_management(call.message, uid, page)
         
@@ -784,7 +784,7 @@ def process_admin_edit_user(message):
     
     if field == "name":
         if len(input_text.split()) < 3:
-            msg = bot.send_message(message.chat.id, "❌ يجب إدخال اسم ثلاثي صحيح لتفادي الانهيار الرقمي للمنافسة، أعد الإرسال مجدداً:")
+            msg = bot.send_message(message.chat.id, "❌ يجب إدخل اسم ثلاثي صحيح لتفادي الانهيار الرقمي للمنافسة، أعد الإرسال مجدداً:")
             bot.register_next_step_handler(msg, process_admin_edit_user)
             conn.close()
             return
@@ -899,7 +899,7 @@ def admin_delete_tournament(call):
     conn.close()
     
     load_dynamic_tournaments()
-    bot.answer_callback_query(call.id, f"🗑️ تم حذف بطولة {tour} وكافة السجلات المرتبطة بها نهائياً!", show_alert=True)
+    bot.send_message(call.message.chat.id, f"🗑️ تم حذف بطولة {tour} وكافة السجلات المرتبطة بها نهائياً!")
     call.data = f"mdb_cat_{cat}"
     admin_manage_db_tournaments(call)
 
@@ -1014,7 +1014,7 @@ def admin_single_team_actions(call):
     load_dynamic_tournaments()
     teams_list = DATA_BANK.get(cat, {}).get(tour, [])
     if full_idx >= len(teams_list):
-        bot.answer_callback_query(call.id, "خطأ في جلب بيانات النادي.")
+        bot.send_message(call.message.chat.id, "❌ خطأ في جلب بيانات النادي.")
         return
         
     team_name = teams_list[full_idx]
@@ -1048,7 +1048,7 @@ def admin_delete_single_team(call):
     conn.close()
     
     load_dynamic_tournaments()
-    bot.answer_callback_query(call.id, f"🗑️ تم سحب وإلغاء {team_name} من البطولة!", show_alert=True)
+    bot.send_message(call.message.chat.id, f"🗑️ تم سحب وإلغاء {team_name} من البطولة!")
     call.data = f"mdbt_teams_{cat}_{tour}_{page}"
     admin_manage_teams_page(call)
 
@@ -1472,16 +1472,21 @@ def delete_match_completely(call):
 @bot.callback_query_handler(func=lambda call: True)
 def master_callback_handler(call):
     """
-    بوابة التحكم الموحدة: تقوم بفرز الحدث للتابع المخصص،
-    وتضمن إرسال تأكيد الاستلام لتليجرام (answer_callback_query) في النهاية
-    مهما كان مسار المعالجة أو حتى لو تم الضغط على الأزرار الفارغة.
+    بوابة التحكم الموحدة: تقوم بإرسال تأكيد الاستلام لتليجرام فوراً (answer_callback_query)
+    لضمان استجابة فورية للأزرار وإيقاف مؤشر الانتظار، ثم توجه الحدث للتابع المخصص.
     """
     try:
-        data = call.data
-        if not data or data == "none":
-            return
-        
-        # فرز التوجيهات والمزامنة البرمجية
+        # 1. إيقاف علامة التحميل (الـ Spinner) الدوارة فوق الزر فوراً لمظهر فائق السرعة
+        bot.answer_callback_query(call.id)
+    except Exception as e:
+        print(f"⚠️ تعذر إرسال تأكيد callback_query: {e}")
+
+    data = call.data
+    if not data or data == "none":
+        return
+    
+    try:
+        # 2. فرز التوجيهات والمزامنة البرمجية
         if data.startswith("usr_pred_"):
             user_prediction_interface(call)
         elif data.startswith("u_"):
@@ -1529,16 +1534,9 @@ def master_callback_handler(call):
             
     except Exception as e:
         print(f"⚠️ خطأ غير متوقع أثناء توجيه ضغطة الزر: {e}")
-    finally:
-        # تأكيد استلام أي ضغطة زر لتجنب بقاء مؤشر الانتظار يدور على الهاتف
-        try:
-            bot.answer_callback_query(call.id)
-        except Exception:
-            # نتجاهل الأخطاء إذا كانت الضغطة قد تم الإجابة عليها بالفعل بإنذار مخصص
-            pass
 
 # ==========================================
-# 🌐 إعدادات الـ Webhook لـ PythonAnywhere (البديل المطور لـ infinity_polling)
+# 🌐 إعدادات الـ Webhook لـ PythonAnywhere
 # ==========================================
 @app.route('/' + TOKEN, methods=['POST'])
 def webhook():
