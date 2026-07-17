@@ -4,10 +4,11 @@ import sqlite3
 import telebot
 import copy
 import threading
-from flask import Flask
+from flask import Flask, request, abort
 from datetime import datetime, timedelta
 from io import BytesIO
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from telebot import apihelper
 
 # ==========================================
 # 🌐 إعداد خادم Flask لتأمين استمرارية السيرفر
@@ -21,11 +22,13 @@ def index():
 # ==========================================
 # 🔐 الإعدادات والتأمينات الأمنية
 # ==========================================
-TOKEN = os.getenv("BOT_TOKEN", "8673575186:AAG2YvsMOxJu2Iw7Rr6oaiMeUdQVGMZuTHQ")
+TOKEN = os.getenv("BOT_TOKEN", "8673575186:AAHSQEMnI4QlzazufdyWwwssSlbmptQVix4")
+
 ADMIN_ID = int(os.getenv("ADMIN_ID", 7394452907))
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "Aood71arf")
 
-bot = telebot.TeleBot(TOKEN)
+bot = telebot.TeleBot(TOKEN, threaded=False)
+
 
 # ==========================================
 # 🛡️ دالة تأمين النصوص ضد أخطاء الماركداون
@@ -284,7 +287,6 @@ def show_available_matches(message):
         
     bot.send_message(message.chat.id, "🏟️ المباريات المتاحة للتوقع (التعديل متاح حتى موعد انطلاق اللقاء الرسمي):", reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("usr_pred_"))
 def user_prediction_interface(call):
     match_id = int(call.data.split("_")[2])
     conn = get_db()
@@ -351,7 +353,6 @@ def render_prediction_keyboard(message, user_id, home, away):
     except telebot.apihelper.ApiTelegramException:
         pass
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("u_"))
 def handle_user_adjustments(call):
     user_id = call.from_user.id
     if user_id not in USER_SESSION:
@@ -447,7 +448,6 @@ def show_standings_page(chat_id, page=0, message_id=None):
     else:
         bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("std_page_"))
 def handle_standings_pagination(call):
     page = int(call.data.split("_")[2])
     show_standings_page(call.message.chat.id, page=page, message_id=call.message.message_id)
@@ -529,7 +529,7 @@ def show_my_info(message):
     
     text = f"👤 **معلومات بطاقتك والمحرّف الرقمي الخاص بك:**\n\n" \
            f"📝 الاسم الثلاثي: *{escape_markdown(full_name)}*\n" \
-           f"🆔 الهوية الرقمية (الهاتف): `{phone_number}`\n" \
+           f"🆔 الهوية الرقمية (Telegram ID): `{phone_number}`\n" \
            f"💰 رصيدك الإجمالي: *{points}* نقطة"
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
@@ -564,12 +564,10 @@ def render_admin_panel_view(message):
     )
     bot.edit_message_text("⚙️ **لوحة التحكم الشاملة لمدير المنظومة:**", message.chat.id, message.message_id, reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data == "adm_main_panel")
 def return_to_admin_panel_callback(call):
     if not is_admin(call.from_user): return
     render_admin_panel_view(call.message)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("adm_"))
 def handle_admin_actions(call):
     if not is_admin(call.from_user): return
     action = call.data
@@ -718,7 +716,6 @@ def render_single_user_management(message, uid, page):
     except telebot.apihelper.ApiTelegramException:
         pass
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("au_"))
 def handle_user_management_callbacks(call):
     if not is_admin(call.from_user): return
     parts = call.data.split("_")
@@ -851,7 +848,6 @@ def admin_manage_db_categories(call):
     markup.add(InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="adm_main_panel"))
     bot.edit_message_text("🛠️ **إدارة بنك البيانات والمسابقات:** اختر التصنيف المراد إدارته، حذفه أو التعديل عليه:", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("mdb_cat_"))
 def admin_manage_db_tournaments(call):
     if not is_admin(call.from_user): return
     cat = call.data.split("_")[2]
@@ -866,7 +862,6 @@ def admin_manage_db_tournaments(call):
     markup.add(InlineKeyboardButton("🔙 العودة للخلف", callback_data="adm_manage_db"))
     bot.edit_message_text(f"🗂️ **تصفح بطولات قسم [{cat}]:** اختر بطولة لعرض خيارات التعديل، الحذف بالكامل أو إدارة أنديتها:", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("mdb_addtour_"))
 def admin_add_tour_from_manage(call):
     if not is_admin(call.from_user): return
     cat = call.data.split("_")[2]
@@ -874,7 +869,6 @@ def admin_add_tour_from_manage(call):
     msg = bot.edit_message_text("✍️ **[خطوة 2 من 3]** أرسل اسم البطولة الجديدة ليتم حجزها ومزامنتها بنجاح (مثال: دوري أبطال أوروبا):", call.message.chat.id, call.message.message_id)
     bot.register_next_step_handler(msg, process_tournament_name)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("mdb_tr_"))
 def admin_manage_single_tournament(call):
     if not is_admin(call.from_user): return
     parts = call.data.split("_")
@@ -891,7 +885,6 @@ def admin_manage_single_tournament(call):
     )
     bot.edit_message_text(f"🏆 **إدارة مسار البطولة:** {tour}\n💼 القسم الأساسي: {cat}\n\nاختر الإجراء الفوري والمطلوب تطبيقه:", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("mdbt_del_"))
 def admin_delete_tournament(call):
     if not is_admin(call.from_user): return
     parts = call.data.split("_")
@@ -910,7 +903,6 @@ def admin_delete_tournament(call):
     call.data = f"mdb_cat_{cat}"
     admin_manage_db_tournaments(call)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("mdbt_edit_"))
 def admin_edit_tournament_prompt(call):
     if not is_admin(call.from_user): return
     parts = call.data.split("_")
@@ -947,7 +939,6 @@ def process_rename_tournament(message):
     ADMIN_SESSION.pop(uid, None)
     show_main_menu(message)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("mdbt_addteam_"))
 def admin_add_team_prompt(call):
     if not is_admin(call.from_user): return
     parts = call.data.split("_")
@@ -982,7 +973,6 @@ def process_add_single_team(message):
     ADMIN_SESSION.pop(uid, None)
     show_main_menu(message)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("mdbt_teams_"))
 def admin_manage_teams_page(call):
     if not is_admin(call.from_user): return
     parts = call.data.split("_")
@@ -1013,7 +1003,6 @@ def admin_manage_teams_page(call):
     markup.add(InlineKeyboardButton("🔙 عودة للبطولة", callback_data=f"mdb_tr_{cat}_{tour}"))
     bot.edit_message_text(f"💡 **استعراض فرق [{tour}] (صفحة {page+1}):**\nاختر الكيان/النادي المراد حذفه أو تعديل اسمه يدوياً:", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("mdbm_tm_"))
 def admin_single_team_actions(call):
     if not is_admin(call.from_user): return
     parts = call.data.split("_")
@@ -1038,7 +1027,6 @@ def admin_single_team_actions(call):
     )
     bot.edit_message_text(f"⚽ **لوحة التحكم بالكيان:** {team_name}\n🏆 البطولة: {tour}\n💼 القسم: {cat}", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("mdbtm_del_"))
 def admin_delete_single_team(call):
     if not is_admin(call.from_user): return
     parts = call.data.split("_")
@@ -1064,7 +1052,6 @@ def admin_delete_single_team(call):
     call.data = f"mdbt_teams_{cat}_{tour}_{page}"
     admin_manage_teams_page(call)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("mdbtm_edit_"))
 def admin_edit_team_prompt(call):
     if not is_admin(call.from_user): return
     parts = call.data.split("_")
@@ -1108,7 +1095,6 @@ def process_rename_team(message):
     ADMIN_SESSION.pop(uid, None)
     show_main_menu(message)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("t_cat_"))
 def handle_tournament_category(call):
     if not is_admin(call.from_user): return
     uid = call.from_user.id
@@ -1247,7 +1233,6 @@ def render_time_adjustment_view(message, admin_id):
     
     bot.edit_message_text(f"📆 **ضبط الوقت والتاريخ للمباراة بالأزرار:**\n\n🏟️ المباراة: {data['home_team']} × {data['away_team']}\n⏱️ موعد الإغلاق: `{current_set_time}`", message.chat.id, message.message_id, reply_markup=markup, parse_mode="Markdown")
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("ax_"))
 def build_match_wizard(call):
     uid = call.from_user.id
     if not is_admin(call.from_user): return
@@ -1291,7 +1276,6 @@ def build_match_wizard(call):
     elif action == "ax_b_ateam": render_away_team_selection(call.message, uid)
     elif action == "ax_b_type": render_match_type_selection(call.message, uid)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("at_"))
 def adjust_match_time(call):
     admin_id = call.from_user.id
     if not is_admin(call.from_user): return
@@ -1326,7 +1310,6 @@ def adjust_match_time(call):
 # ==========================================
 # 🏁 رصد نتائج المباريات الرسمية وحساب النقاط المعقد
 # ==========================================
-@bot.callback_query_handler(func=lambda call: call.data.startswith("as_"))
 def admin_settle_interface(call):
     if not is_admin(call.from_user): return
     parts = call.data.split("_")
@@ -1369,7 +1352,6 @@ def render_admin_settle_keyboard(message, admin_id):
     markup.row(InlineKeyboardButton("🏁 اعتماد النتيجة وضخ النقاط 🚀", callback_data="s_finalize"))
     bot.edit_message_text(f"⚽ **إدخال النتيجة الرسمية:**\n🏟️ {data['home']} × {data['away']}\nاستخدم الأزرار لتحديد النتيجة الحقيقية:", message.chat.id, message.message_id, reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("s_"))
 def process_admin_settle_adjustments(call):
     if not is_admin(call.from_user): return
     admin_id = call.from_user.id
@@ -1473,7 +1455,6 @@ def process_admin_settle_adjustments(call):
 # ==========================================
 # 🗑️ مسح وإلغاء المباريات
 # ==========================================
-@bot.callback_query_handler(func=lambda call: call.data.startswith("ad_del_"))
 def delete_match_completely(call):
     if not is_admin(call.from_user): return
     match_id = int(call.data.split("_")[2])
@@ -1486,15 +1467,89 @@ def delete_match_completely(call):
     bot.edit_message_text("🗑️ **تم حذف المباراة وكافة توقعاتها المرتبطة بها نهائياً من النظام.**", call.message.chat.id, call.message.message_id)
 
 # ==========================================
-# 🚀 محرك التشغيل اللانهائي (Background Threading)
+# 🛑 البوابة الذكية الموحدة لمعالجة ضغطات الأزرار (Master Callback Router)
 # ==========================================
-def run_bot():
-    bot.infinity_polling(skip_pending=True)
+@bot.callback_query_handler(func=lambda call: True)
+def master_callback_handler(call):
+    """
+    بوابة التحكم الموحدة: تقوم بفرز الحدث للتابع المخصص،
+    وتضمن إرسال تأكيد الاستلام لتليجرام (answer_callback_query) في النهاية
+    مهما كان مسار المعالجة أو حتى لو تم الضغط على الأزرار الفارغة.
+    """
+    try:
+        data = call.data
+        if not data or data == "none":
+            return
+        
+        # فرز التوجيهات والمزامنة البرمجية
+        if data.startswith("usr_pred_"):
+            user_prediction_interface(call)
+        elif data.startswith("u_"):
+            handle_user_adjustments(call)
+        elif data.startswith("std_page_"):
+            handle_standings_pagination(call)
+        elif data == "adm_main_panel":
+            return_to_admin_panel_callback(call)
+        elif data.startswith("adm_"):
+            handle_admin_actions(call)
+        elif data.startswith("au_"):
+            handle_user_management_callbacks(call)
+        elif data.startswith("mdb_cat_"):
+            admin_manage_db_tournaments(call)
+        elif data.startswith("mdb_addtour_"):
+            admin_add_tour_from_manage(call)
+        elif data.startswith("mdb_tr_"):
+            admin_manage_single_tournament(call)
+        elif data.startswith("mdbt_del_"):
+            admin_delete_tournament(call)
+        elif data.startswith("mdbt_edit_"):
+            admin_edit_tournament_prompt(call)
+        elif data.startswith("mdbt_addteam_"):
+            admin_add_team_prompt(call)
+        elif data.startswith("mdbt_teams_"):
+            admin_manage_teams_page(call)
+        elif data.startswith("mdbm_tm_"):
+            admin_single_team_actions(call)
+        elif data.startswith("mdbtm_del_"):
+            admin_delete_single_team(call)
+        elif data.startswith("mdbtm_edit_"):
+            admin_edit_team_prompt(call)
+        elif data.startswith("t_cat_"):
+            handle_tournament_category(call)
+        elif data.startswith("ax_"):
+            build_match_wizard(call)
+        elif data.startswith("at_"):
+            adjust_match_time(call)
+        elif data.startswith("as_"):
+            admin_settle_interface(call)
+        elif data.startswith("s_"):
+            process_admin_settle_adjustments(call)
+        elif data.startswith("ad_del_"):
+            delete_match_completely(call)
+            
+    except Exception as e:
+        print(f"⚠️ خطأ غير متوقع أثناء توجيه ضغطة الزر: {e}")
+    finally:
+        # تأكيد استلام أي ضغطة زر لتجنب بقاء مؤشر الانتظار يدور على الهاتف
+        try:
+            bot.answer_callback_query(call.id)
+        except Exception:
+            # نتجاهل الأخطاء إذا كانت الضغطة قد تم الإجابة عليها بالفعل بإنذار مخصص
+            pass
 
-if __name__ == '__main__':
-    # تشغيل البوت في خلفية النظام لكي لا يمنع Flask من العمل وتلقي المنافذ
-    threading.Thread(target=run_bot, daemon=True).start()
-    
-    # السيرفر يبحث عن المنفذ المتغير، وإذا لم يجده يستخدم 5000 تلقائياً
+# ==========================================
+# 🌐 إعدادات الـ Webhook لـ PythonAnywhere (البديل المطور لـ infinity_polling)
+# ==========================================
+@app.route('/' + TOKEN, methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return ''
+    else:
+        abort(403)
+
+if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
