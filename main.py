@@ -1534,20 +1534,27 @@ def master_callback_handler(call):
             
     except Exception as e:
         print(f"⚠️ خطأ غير متوقع أثناء توجيه ضغطة الزر: {e}")
-
 # ==========================================
-# 🌐 إعدادات الـ Webhook لـ PythonAnywhere
+# 🌐 تشغيل السيرفر وربط الـ Webhook تلقائياً
 # ==========================================
-@app.route('/' + TOKEN, methods=['POST'])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return ''
-    else:
-        abort(403)
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
+    
+    # جلب رابط مشروعك تلقائياً من بيئة Railway العامة
+    RAILWAY_DOMAIN = os.getenv("RAILWAY_PUBLIC_DOMAIN")
+    
+    if RAILWAY_DOMAIN:
+        try:
+            bot.remove_webhook()
+            # ربط التوكين بالدومين المشفر الخاص بك
+            webhook_url = f"https://{RAILWAY_DOMAIN}/{TOKEN}"
+            bot.set_webhook(url=webhook_url)
+            print(f"✅ تم ربط الـ Webhook بنجاح على الرابط: {webhook_url}")
+        except Exception as e:
+            print(f"⚠️ خطأ أثناء إعداد الـ Webhook: {e}")
+    else:
+        print("⚠️ تحذير: لم يتم العثور على متغير RAILWAY_PUBLIC_DOMAIN، تأكد من تفعيل الدومين العام للمشروع في إعدادات Railway.")
+
+    # بدء تشغيل خادم Flask المضيف
     app.run(host="0.0.0.0", port=port)
+
