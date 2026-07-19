@@ -23,12 +23,10 @@ def index():
 # 🔐 الإعدادات والتأمينات الأمنية
 # ==========================================
 TOKEN = os.getenv("BOT_TOKEN", "8673575186:AAHSQEMnI4QlzazufdyWwwssSlbmptQVix4")
-
 ADMIN_ID = int(os.getenv("ADMIN_ID", 7394452907))
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "Aood71arf")
 
 bot = telebot.TeleBot(TOKEN, threaded=False)
-
 
 # ==========================================
 # 🛡️ دالة تأمين النصوص ضد أخطاء الماركداون
@@ -56,12 +54,12 @@ DATA_BANK = {
     },
     "القارات": {
         "آسيا (قسم غربي) 🧭": ["السعودية🇸🇦", "الإمارات العربية المتحدة🇦🇪", "قطر🇶🇦", "البحرين🇧🇭", "عمان🇴🇲", "الكويت🇰🇼", "العراق🇮🇶", "الأردن🇯🇴", "فلسطين🇵🇸", "لبنان🇱🇧", "سوريا🇸🇾", "اليمن🇾🇪", "إيران🇮🇷", "أوزبكستان🇺🇿", "تركمانستان🇹🇲", "طاجيكستان🇹🇯", "قيرغيزستان🇰🇬", "أفغانستان🇦🇫", "الهند🇮🇳", "باكستان🇵🇰", "بنغلاديش🇧🇩", "نيبال🇳🇵", "بوتان🇧🇹", "سريلانكا🇱🇰", "جزر المالديف🇲🇻"],
-        "آسيا (قسم شرقي) 🌏": ["اليابان🇯🇵", "كوريا الجنوبية🇰🇷", "الصين🇨🇳", "أستراليا🇦🇺", "كوريا الشمالية🇰🇵", "تايبيه الصينية🇹🇼", "هونغ كونغ 🇭🇰", "ماكاو🇲🇴", "منغوليا🇲🇳", "فيتنام🇻🇳", "تايلاند🇹🇭", "ماليزيا🇲🇾", "إندونيسيا🇮🇩", "الفلبين🇵🇭", "سنغافورة🇸🇬", "ميانمار🇲🇪", "كمبوديا🇰🇭", "لاوس🇱🇦", "بروناي🇧🇳", "تيمور الشرقية🇹🇱", "غوام🇬🇺", "جزر ماريانا الشمالية🇲🇵"],
-        "أوروبا 🇪🇺": ["ألبانيا🇦🇱", "أندورا🇦🇩", "أرمينيا🇦🇲", "النمسا🇦🇹", "أذربيجان🇦🇿", "بيلاروسيا🇧🇾", "بلجيكا🇧🇪", "البوسنة والهرسك🇧🇦", "بلغاريا🇧🇬", "كرواتيا🇭🇷", "قبرص🇨🇾", "جمهورية التشيك🇨🇿", "الدنمارك🇩🇰", "إنجلترا🇫🇴", "إستونيا🇪🇪", "جزر فارو🇫🇴", "فنلندا🇫🇮", "فرنسا🇫🇷", "جورجيا🇬🇪", "ألمانيا🇩🇪", "جبل طارق🇬🇮", "اليونان🇬🇷", "المجر🇭🇺", "آيسلندا🇮🇸", "إسرائيل🇮🇱", "إيطاليا🇮🇹", "كازاخستان🇰🇿", "كوسوفو🇽🇰", "لاتفيا🇱🇻", "ليختنشتاين🇱🇮", "ليتوانيا🇱🇹", "لوكسمبورغ🇱🇺", "مالطا🇲🇹", "مولدوفا🇲🇩", "الجبل الأسود🇲🇪", "هولندا🇳🇱", "مقدونيا الشمالية🇲🇰", "أيرلندا الشمالية🇬بان", "النرويج🇳🇴", "بولندا🇵🇱", "البرتغال🇵🇹", "جمهورية أيرلندا🇮🇪", "رومانيا🇷🇴", "روسيا🇷🇺", "سان مارينو🇸🇲", "اسكتلندا 🏴󠁧󠁢󠁳󠁣󠁴󠁿", "صربيا🇷🇸", "سلوفاكيا🇸🇰", "سلوفينيا🇸🇮", "إسبانيا🇪🇸", "السويد🇸🇪", "سويسرا🇨🇭", "تركيا🇹🇷", "أوكرانيا🇺🇦", "ويلز 🏴󠁧󠁢󠁷󠁬󠁳󠁿"],
+        "آسيا (قسم شرقي) 🌏": ["اليابان🇯🇵", "كوريا الجنوبية🇰🇷", "الصين🇨🇳", "أستراليا🇦🇺", "كوريا الشمالية🇰🇵", "تايبيه الصينية🇹🇼", "هونغ كونغ 🇭🇰", "ماكاو🇲🇴", "منغوليا🇲🇳", "فيتنام🇻🇳", "تايلاند🇹🇭", "ماليزيا🇲🇾", "إندونيسيا🇮🇩", "الفلبين🇵🇭", "سنغافورة🇸🇬", "ميانمار🇲🇲", "كمبوديا🇰🇭", "لاوس🇱🇦", "بروناي🇧🇳", "تيمور الشرقية🇹🇱", "غوام🇬🇺", "جزر ماريانا الشمالية🇲🇵"],
+        "أوروبا 🇪🇺": ["ألبانيا🇦🇱", "أندورا🇦🇩", "أرمينيا🇦🇲", "النمسا🇦🇹", "أذربيجان🇦🇿", "بيلاروسيا🇧🇾", "بلجيكا🇧🇪", "البوسنة والهرسك🇧🇦", "بلغاريا🇧🇬", "كرواتيا🇭🇷", "قبرص🇨🇾", "جمهورية التشيك🇨🇿", "الدنمارك🇩🇰", "إنجلترا🏴󠁧󠁢󠁥󠁮󠁧󠁿", "إستونيا🇪🇪", "جزر فارو🇫🇴", "فنلندا🇫🇮", "فرنسا🇫🇷", "جورجيا🇬🇪", "ألمانيا🇩🇪", "جبل طارق🇬🇮", "اليونان🇬🇷", "المجر🇭🇺", "آيسلندا🇮🇸", "إسرائيل🇮🇱", "إيطاليا🇮🇹", "كازاخستان🇰🇿", "كوسوفو🇽🇰", "لاتفيا🇱🇻", "ليختنشتاين🇱🇮", "ليتوانيا🇱🇹", "لوكسمبورغ🇱🇺", "مالطا🇲🇹", "مولدوفا🇲🇩", "الجبل الأسود🇲🇪", "هولندا🇳🇱", "مقدونيا الشمالية🇲🇰", "أيرلندا الشمالية🏴󠁧󠁢󠁮󠁧󠁿", "النرويج🇳🇴", "بولندا🇵🇱", "البرتغال🇵🇹", "جمهورية أيرلندا🇮🇪", "رومانيا🇷🇴", "روسيا🇷🇺", "سان مارينو🇸🇲", "اسكتلندا🏴󠁧󠁢󠁳󠁣󠁴󠁿", "صربيا🇷🇸", "سلوفاكيا🇸🇰", "سلوفينيا🇸🇮", "إسبانيا🇪🇸", "السويد🇸🇪", "سويسرا🇨🇭", "تركيا🇹🇷", "أوكرانيا🇺🇦", "ويلز🏴󠁧󠁢󠁷󠁬󠁳󠁿"],
         "أمريكا الجنوبية 🇦🇷": ["الأرجنتين🇦🇷", "بوليفيا🇧🇴", "البرازيل🇧🇷", "تشيلي🇨🇱", "كولومبيا🇨🇴", "الإكوادور🇪🇨", "باراغواي🇵🇾", "بيرو🇵🇪", "أوروغواي🇺🇾", "فنزويلا🇻🇪"],
-        "أفريقيا (قسم شمالي) 🦅": ["الجزائر🇩🇿", "مصر🇪🇬", "ليبيا🇱🇾", "المغرب🇲🇦", "موريتانيا🇲🇷", "تشاد🇹🇩", "مالي🇲🇱", "النيجر🇿🇼", "بوركينا فاسو🇧🇫"],
-        "أفريقيا (قسم جنوبي) 🦁": ["أنغولا🇦🇴", "بنين🇧じん", "بوتسوانا🇧🇼", "بوروندي🇧🇮", "الرأس الأخضر🇨вих", "الكاميرون🇨🇲", "جمهورية أفريقيا الوسطى🇨🇫", "جزر القمر🇰🇲", "الكونغو🇨🇬", "جمهورية الكونغو الديمقراطية🇨🇩", "غينيا الاستوائية🇬🇶", "إريتريا🇪🇷", "إسواتيني🇸🇿", "إثيوبيا🇪🇹", "الغابون🇬🇦", "غامبيا🇬🇲", "غانا🇬🇭", "غينيا🇬🇳", "غينيا بيساو🇬🇼", "ساحل العاج🇨🇮", "كينيا🇰🇪", "ليسوتو🇱🇸", "ليبيريا🇱🇷", "مدغشقر🇲🇬", "مالاوي🇲🇼", "موريشيوس🇲🇺", "موزمبيق🇲🇿", "ناميبيا🇳🇦"],
-        "أوقيانوسيا 🇳🇿": ["نيوزيلندا🇳🇿", "جزر سليمان🇸🇧", "تاهيتي🇵🇫", "فانواتو🇻🇺", "كاليدونيا الجديدة🇳🇨", "بابوا غينيا الجديدة🇵🇬", "فيجي 🇫يج", "ساموا🇼🇸", "ساموا الأمريكية🇦🇸", "تونغا🇹🇴", "جزر كوك🇨🇰"],
+        "أفريقيا (قسم شمالي) 🦅": ["الجزائر🇩🇿", "مصر🇪🇬", "ليبيا🇱🇾", "المغرب🇲🇦", "موريتانيا🇲🇷", "تشاد🇹🇩", "مالي🇲🇱", "النيجر🇳🇪", "بوركينا فاسو🇧🇫"],
+        "أفريقيا (قسم جنوبي) 🦁": ["أنغولا🇦🇴", "بنين🇧🇯", "بوتسوانا🇧🇼", "بوروندي🇧🇮", "الرأس الأخضر🇨🇻", "الكاميرون🇨🇲", "جمهورية أفريقيا الوسطى🇨🇫", "جزر القمر🇰🇲", "الكونغو🇨🇬", "جمهورية الكونغو الديمقراطية🇨🇩", "غينيا الاستوائية🇬🇶", "إريتريا🇪🇷", "إسواتيني🇸🇿", "إثيوبيا🇪🇹", "الغابون🇬🇦", "غامبيا🇬🇲", "غانا🇬🇭", "غينيا🇬🇳", "غينيا بيساو🇬🇼", "ساحل العاج🇨🇮", "كينيا🇰🇪", "ليسوتو🇱🇸", "ليبيريا🇱🇷", "مدغشقر🇲🇬", "مالاوي🇲🇼", "موريشيوس🇲🇺", "موزمبيق🇲🇿", "ناميبيا🇳🇦"],
+        "أوقيانوسيا 🇳🇿": ["نيوزيلندا🇳🇿", "جزر سليمان🇸🇧", "تاهيتي🇵🇫", "فانواتو🇻🇺", "كاليدونيا الجديدة🇳🇨", "بابوا غينيا الجديدة🇵🇬", "فيجي🇫🇯", "ساموا🇼🇸", "ساموا الأمريكية🇦🇸", "تونغا🇹🇴", "جزر كوك🇨🇰"],
         "أمريكا الشمالية 🇺🇸": ["الولايات المتحدة🇺🇸", "المكسيك🇲🇽", "كندا🇨🇦", "بنما🇵🇦", "كوستاريكا🇨🇷", "هندوراس🇭🇳", "جامايكا🇯🇲", "السلفادور🇸🇻", "غواتيمالا🇬🇹", "هايتي🇭🇹", "كوراساو🇨🇼", "ترينيداد وتوباغو🇹🇹", "نيكاراغوا🇳🇮", "سورينام🇸🇷"]
     }
 }
@@ -75,7 +73,7 @@ def is_admin(user):
     return user.id == ADMIN_ID or user.username == ADMIN_USERNAME
 
 # ==========================================
-# ⚡ إدارة قاعدة البيانات بأعلى كفاءة وتأمين Concurrency
+# ⚡ إدارة قاعدة البيانات وتأمين Concurrency
 # ==========================================
 def get_db():
     conn = sqlite3.connect('contest_master.db', timeout=15)
@@ -250,7 +248,7 @@ def handle_text_buttons(message):
     elif message.text == "🔙 العودة للقائمة الرئيسية":
         show_main_menu(message)
         
-    # --- أزرار لوحة تحكم المشرف الرئيسية (الجديدة بدلاً من العائمة) ---
+    # --- أزرار لوحة تحكم المشرف الرئيسية ---
     elif is_admin(message.from_user):
         if message.text == "➕ إضافة وجدولة مباراة جديدة":
             ADMIN_SESSION[message.from_user.id] = {}
@@ -572,12 +570,12 @@ def show_my_info(message):
     
     text = f"👤 **معلومات بطاقتك والمحرّف الرقمي الخاص بك:**\n\n" \
            f"📝 الاسم الثلاثي: *{escape_markdown(full_name)}*\n" \
-           f"🆔 الهوية الرقمية (Telegram ID): `{phone_number}`\n" \
+           f"🆔 الهوية الرقمية (الهاتف البنكي): `{phone_number}`\n" \
            f"💰 رصيدك الإجمالي: *{points}* نقطة"
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
 # ==========================================
-# ⚙️ لوحة الإدارة الرئيسية الجديدة (ReplyKeyboardMarkup)
+# ⚙️ لوحة الإدارة الرئيسية الجديدة
 # ==========================================
 def show_admin_panel(message):
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
@@ -594,9 +592,6 @@ def show_admin_panel(message):
     )
     bot.send_message(message.chat.id, "⚙️ **لوحة التحكم الشاملة لمدير المنظومة:**", reply_markup=markup)
 
-def render_admin_panel_view(message):
-    show_admin_panel(message)
-
 def return_to_admin_panel_callback(call):
     if not is_admin(call.from_user): return
     try:
@@ -605,7 +600,7 @@ def return_to_admin_panel_callback(call):
         pass
     show_admin_panel(call.message)
 
-# --- دوال مساعدة لاستدعاء القوائم الفرعية عبر الأزرار الرئيسية الجديدة ---
+# --- دوال استدعاء القوائم الفرعية عبر الأزرار الرئيسية ---
 def admin_manage_db_categories_text(message):
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("🏆 الدوريات والأندية", callback_data="mdb_cat_الدوريات"),
@@ -643,9 +638,7 @@ def admin_delete_list_text(message):
     markup.add(InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="adm_main_panel"))
     bot.send_message(message.chat.id, "⚠️ اختر المباراة للمسح والإلغاء النهائي:", reply_markup=markup)
 
-
 def handle_admin_actions(call):
-    # تم إبقاء الدالة لضمان توافقية الاستدعاءات الخلفية الفرعية فقط
     if not is_admin(call.from_user): return
     action = call.data
     if action == "adm_main_panel":
@@ -686,7 +679,7 @@ def show_admin_users_page(chat_id, page=0, message_id=None):
         
     markup.add(InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="adm_main_panel"))
     
-    text = "👥 **لوحة التحكم بالمنافسين وحساباتهم المفتوحة:**\nاختر منافساً من القائمة أدناه لعرض هويته وهاتفه، تعديل نقاطه يدوياً، تعديل اسمه، أو تطبيق قرار الحظر:"
+    text = "👥 **لوحة التحكم بالمنافسين وحساباتهم المفتوحة:**\nاختر منافساً من القائمة أدناه لعرض معطياته، تعديل نقاطه يدوياً، تعديل اسمه، أو تطبيق قرار الحظر:"
     if message_id:
         try:
             bot.edit_message_text(text, chat_id, message_id, reply_markup=markup, parse_mode="Markdown")
@@ -726,7 +719,7 @@ def render_single_user_management(message, uid, page):
     )
     toggle_ban_text = "🟢 إلغاء الحظر عن المنافس" if banned == 1 else "🚫 حظر المنافس من البوت"
     markup.add(InlineKeyboardButton(toggle_ban_text, callback_data=f"au_toggleban_{uid}_{page}"))
-    markup.add(InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data=f"au_back_{page}"))
+    markup.add(InlineKeyboardButton("🔙 العودة للقائمة السابقة", callback_data=f"au_back_{page}"))
     
     try:
         bot.edit_message_text(text, message.chat.id, message.message_id, reply_markup=markup, parse_mode="Markdown")
@@ -773,7 +766,7 @@ def handle_user_management_callbacks(call):
         uid = int(parts[2])
         page = int(parts[3])
         ADMIN_SESSION[call.from_user.id] = {"edit_uid": uid, "page": page, "field": "points"}
-        msg = bot.send_message(call.message.chat.id, "🔢 أرسل القيمة العددية الإجمالية الجديدة للنقاط (مثال: 120 أو إدخال نقاط سالبة كـ -10):")
+        msg = bot.send_message(call.message.chat.id, "🔢 أرسل القيمة العددية الإجمالية الجديدة للنقاط (مثال: 120 أو إدخل قيمة سالبة كـ -10):")
         bot.register_next_step_handler(msg, process_admin_edit_user)
         
     elif action == "back":
@@ -801,7 +794,7 @@ def process_admin_edit_user(message):
     
     if field == "name":
         if len(input_text.split()) < 3:
-            msg = bot.send_message(message.chat.id, "❌ يجب إدخل اسم ثلاثي صحيح لتفادي الانهيار الرقمي للمنافسة، أعد الإرسال مجدداً:")
+            msg = bot.send_message(message.chat.id, "❌ يجب إدخال اسم ثلاثي صحيح لتفادي الانهيار الرقمي للمنافسة، أعد الإرسال مجدداً:")
             bot.register_next_step_handler(msg, process_admin_edit_user)
             conn.close()
             return
@@ -857,14 +850,6 @@ def process_broadcast(message):
 # ==========================================
 # 🏆 معالج إضافة البطولات المخصصة وإدارة بنك البيانات (CRUD)
 # ==========================================
-def admin_manage_db_categories(call):
-    if not is_admin(call.from_user): return
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("🏆 الدوريات والأندية", callback_data="mdb_cat_الدوريات"),
-               InlineKeyboardButton("🌍 القارات والمنتخبات", callback_data="mdb_cat_القارات"))
-    markup.add(InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="adm_main_panel"))
-    bot.edit_message_text("🛠️ **إدارة بنك البيانات والمسابقات:** اختر التصنيف المراد إدارته، حذفه أو التعديل عليه:", call.message.chat.id, call.message.message_id, reply_markup=markup)
-
 def admin_manage_db_tournaments(call):
     if not is_admin(call.from_user): return
     cat = call.data.split("_")[2]
@@ -1018,7 +1003,7 @@ def admin_manage_teams_page(call):
         markup.row(*nav_buttons)
         
     markup.add(InlineKeyboardButton("🔙 عودة للبطولة", callback_data=f"mdb_tr_{cat}_{tour}"))
-    bot.edit_message_text(f"💡 **استعراض فرق [{tour}] (صفحة {page+1}):**\nاختر الكيان/النادي المراد حذفه أو تعديل اسمه يدوياً:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text(f"💡 **استعراض فرق [{tour}] (صفحة {page+1}):**\nاختر النادي المراد حذفه أو تعديل اسمه يدوياً:", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
 def admin_single_team_actions(call):
     if not is_admin(call.from_user): return
@@ -1145,7 +1130,7 @@ def process_tournament_teams(message):
         
     text = message.text.strip() if message.text else ""
     if not text:
-        msg = bot.send_message(message.chat.id, "❌ الرجاء إدخل فرق صحيحة:")
+        msg = bot.send_message(message.chat.id, "❌ الرجاء إدخال فرق صحيحة:")
         bot.register_next_step_handler(msg, process_tournament_teams)
         return
         
@@ -1266,7 +1251,7 @@ def build_match_wizard(call):
         render_home_sub_selection(call.message, uid)
     elif action.startswith("ax_shs_"):
         ADMIN_SESSION[uid]["sub_category_h"] = action.replace("ax_shs_", "")
-        render_home_sub_selection(call.message, uid)
+        render_home_team_selection(call.message, uid) # [تم الإصلاح] تم ربطه بـ render_home_team_selection بدلاً من التكرار الدائري
     elif action.startswith("ax_sht_"):
         idx = int(action.replace("ax_sht_", ""))
         cat = ADMIN_SESSION[uid]["category_h"]
@@ -1450,7 +1435,7 @@ def process_admin_settle_adjustments(call):
         conn.commit()
         conn.close()
         
-        bot.edit_message_text("🎉 **تم حسم ورصد المباراة بنجاح وتحديث كافة أرصدة المتسابقين أوتوماتيكياً!**", call.message.chat.id, call.message.message_id)
+        bot.edit_message_text("🎉 **تم حسم ورصد المباراة بنجاح وتحديث أرصدة المتسابقين تلقائياً!**", call.message.chat.id, call.message.message_id)
         
         score_str = f"[{real_home_score} - {real_away_score}]"
         if data['type'] == "خروج مغلوب (ترجيح)" and real_outcome == "DRAW":
@@ -1493,12 +1478,7 @@ def delete_match_completely(call):
 # ==========================================
 @bot.callback_query_handler(func=lambda call: True)
 def master_callback_handler(call):
-    """
-    بوابة التحكم الموحدة: تقوم بإرسال تأكيد الاستلام لتليجرام فوراً (answer_callback_query)
-    لضمان استجابة فورية للأزرار وإيقاف مؤشر الانتظار، ثم توجه الحدث للتابع المخصص.
-    """
     try:
-        # 1. إيقاف علامة التحميل (الـ Spinner) الدوارة فوق الزر فوراً لمظهر فائق السرعة
         bot.answer_callback_query(call.id)
     except Exception as e:
         print(f"⚠️ تعذر إرسال تأكيد callback_query: {e}")
@@ -1508,7 +1488,6 @@ def master_callback_handler(call):
         return
     
     try:
-        # 2. فرز التوجيهات والمزامنة البرمجية
         if data.startswith("usr_pred_"):
             user_prediction_interface(call)
         elif data.startswith("u_"):
@@ -1571,5 +1550,9 @@ def webhook():
         abort(403)
 
 if __name__ == "__main__":
+    # تنويه: إذا كنت تريد استخدام Polling محلياً بدلاً من الـ Webhook لتجربته على حاسوبك الشخصي:
+    # قم بإلغاء تعليق السطر بالأسفل وعمل تعليق لسطر app.run:
+    # bot.infinity_polling(skip_pending=True)
+    
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
