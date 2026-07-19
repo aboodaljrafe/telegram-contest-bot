@@ -236,6 +236,7 @@ def handle_text_buttons(message):
     if not check_registration(message):
         return
         
+    # --- أزرار المستخدم الرئيسية ---
     if message.text == "🗳️ التوقعات المتاحة":
         show_available_matches(message)
     elif message.text == "📊 جدول الترتيب العام":
@@ -246,6 +247,48 @@ def handle_text_buttons(message):
         show_my_info(message)
     elif message.text == "⚙️ لوحة تحكم المشرف" and is_admin(message.from_user):
         show_admin_panel(message)
+    elif message.text == "🔙 العودة للقائمة الرئيسية":
+        show_main_menu(message)
+        
+    # --- أزرار لوحة تحكم المشرف الرئيسية (الجديدة بدلاً من العائمة) ---
+    elif is_admin(message.from_user):
+        if message.text == "➕ إضافة وجدولة مباراة جديدة":
+            ADMIN_SESSION[message.from_user.id] = {}
+            render_home_cat_selection(message, edit=False)
+            
+        elif message.text == "🏆 إضافة بطولة جديدة ✨":
+            ADMIN_SESSION[message.from_user.id] = {"action": "add_tournament"}
+            markup = InlineKeyboardMarkup()
+            markup.add(InlineKeyboardButton("🏆 الدوريات والأندية", callback_data="t_cat_الدوريات"),
+                       InlineKeyboardButton("🌍 القارات والمنتخبات", callback_data="t_cat_القارات"))
+            markup.add(InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="adm_main_panel"))
+            bot.send_message(message.chat.id, "🗂️ **[خطوة 1 من 3]** اختر التصنيف الأساسي للبطولة:", reply_markup=markup)
+            
+        elif message.text == "🛠️ إدارة وحذف وتعديل البطولات والفرق":
+            admin_manage_db_categories_text(message)
+            
+        elif message.text == "🏁 رصد نتيجة رسمية وحساب النقاط":
+            admin_settle_list_text(message)
+            
+        elif message.text == "🗑️ حذف مباراة مرسلة بالكامل":
+            admin_delete_list_text(message)
+            
+        elif message.text == "👥 إدارة المنافسين والتحكم بالحسابات":
+            show_admin_users_page(message.chat.id, page=0, message_id=None)
+            
+        elif message.text == "📢 إذاعة رسالة للمشتركين (Broadcast)":
+            msg = bot.send_message(message.chat.id, "📢 أرسل الآن نص الرسالة المراد إذاعتها لجميع المشتركين المسجلين:")
+            bot.register_next_step_handler(msg, process_broadcast)
+            
+        elif message.text == "💾 تحميل نسخة احتياطية للبيانات (Backup)":
+            try:
+                with open("contest_master.db", "rb") as db_file:
+                    db_data = db_file.read()
+                bio = BytesIO(db_data)
+                bio.name = f"backup_{datetime.now().strftime('%Y_%m_%d_%H%M%S')}.db"
+                bot.send_document(message.chat.id, bio, caption="💾 نسخة احتياطية لقاعدة البيانات الحالية لجميع المشتركين.")
+            except Exception as e:
+                bot.send_message(message.chat.id, f"❌ حدث خطأ أثناء محاولة عمل النسخة الاحتياطية:\n`{str(e)}`", parse_mode="Markdown")
 
 # ==========================================
 # 🗳️ محرك التوقعات وإدارة الواجهات الذكية
@@ -534,105 +577,79 @@ def show_my_info(message):
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
 # ==========================================
-# ⚙️ لوحة الإدارة المتكاملة (Admin Panel)
+# ⚙️ لوحة الإدارة الرئيسية الجديدة (ReplyKeyboardMarkup)
 # ==========================================
 def show_admin_panel(message):
-    markup = InlineKeyboardMarkup(row_width=1)
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
     markup.add(
-        InlineKeyboardButton("➕ إضافة وجدولة مباراة جديدة", callback_data="adm_add_match"),
-        InlineKeyboardButton("🏆 إضافة بطولة جديدة ✨", callback_data="adm_add_tournament"),
-        InlineKeyboardButton("🛠️ إدارة وحذف وتعديل البطولات والفرق", callback_data="adm_manage_db"),
-        InlineKeyboardButton("🏁 رصد نتيجة رسمية وحساب النقاط", callback_data="adm_settle_list"),
-        InlineKeyboardButton("🗑️ حذف مباراة مرسلة بالكامل", callback_data="adm_delete_list"),
-        InlineKeyboardButton("👥 إدارة المنافسين والتحكم بالحسابات", callback_data="adm_manage_users"),
-        InlineKeyboardButton("📢 إذاعة رسالة للمشتركين (Broadcast)", callback_data="adm_broadcast"),
-        InlineKeyboardButton("💾 تحميل نسخة احتياطية للبيانات (Backup)", callback_data="adm_backup")
+        KeyboardButton("➕ إضافة وجدولة مباراة جديدة"),
+        KeyboardButton("🏆 إضافة بطولة جديدة ✨"),
+        KeyboardButton("🛠️ إدارة وحذف وتعديل البطولات والفرق"),
+        KeyboardButton("🏁 رصد نتيجة رسمية وحساب النقاط"),
+        KeyboardButton("🗑️ حذف مباراة مرسلة بالكامل"),
+        KeyboardButton("👥 إدارة المنافسين والتحكم بالحسابات"),
+        KeyboardButton("📢 إذاعة رسالة للمشتركين (Broadcast)"),
+        KeyboardButton("💾 تحميل نسخة احتياطية للبيانات (Backup)"),
+        KeyboardButton("🔙 العودة للقائمة الرئيسية")
     )
     bot.send_message(message.chat.id, "⚙️ **لوحة التحكم الشاملة لمدير المنظومة:**", reply_markup=markup)
 
 def render_admin_panel_view(message):
-    markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        InlineKeyboardButton("➕ إضافة وجدولة مباراة جديدة", callback_data="adm_add_match"),
-        InlineKeyboardButton("🏆 إضافة بطولة جديدة ✨", callback_data="adm_add_tournament"),
-        InlineKeyboardButton("🛠️ إدارة وحذف وتعديل البطولات والفرق", callback_data="adm_manage_db"),
-        InlineKeyboardButton("🏁 رصد نتيجة رسمية وحساب النقاط", callback_data="adm_settle_list"),
-        InlineKeyboardButton("🗑️ حذف مباراة مرسلة بالكامل", callback_data="adm_delete_list"),
-        InlineKeyboardButton("👥 إدارة المنافسين والتحكم بالحسابات", callback_data="adm_manage_users"),
-        InlineKeyboardButton("📢 إذاعة رسالة للمشتركين (Broadcast)", callback_data="adm_broadcast"),
-        InlineKeyboardButton("💾 تحميل نسخة احتياطية للبيانات (Backup)", callback_data="adm_backup")
-    )
-    bot.edit_message_text("⚙️ **لوحة التحكم الشاملة لمدير المنظومة:**", message.chat.id, message.message_id, reply_markup=markup)
+    show_admin_panel(message)
 
 def return_to_admin_panel_callback(call):
     if not is_admin(call.from_user): return
-    render_admin_panel_view(call.message)
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except:
+        pass
+    show_admin_panel(call.message)
+
+# --- دوال مساعدة لاستدعاء القوائم الفرعية عبر الأزرار الرئيسية الجديدة ---
+def admin_manage_db_categories_text(message):
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("🏆 الدوريات والأندية", callback_data="mdb_cat_الدوريات"),
+               InlineKeyboardButton("🌍 القارات والمنتخبات", callback_data="mdb_cat_القارات"))
+    markup.add(InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="adm_main_panel"))
+    bot.send_message(message.chat.id, "🛠️ **إدارة بنك البيانات والمسابقات:** اختر التصنيف المراد إدارته، حذفه أو التعديل عليه:", reply_markup=markup)
+
+def admin_settle_list_text(message):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT match_id, home_team, away_team FROM matches WHERE status='ACTIVE'")
+    matches = cursor.fetchall()
+    conn.close()
+    if not matches:
+        bot.send_message(message.chat.id, "❌ لا توجد مباريات نشطة بحاجة لرصد حالياً.")
+        return
+    markup = InlineKeyboardMarkup(row_width=1)
+    for m in matches:
+        markup.add(InlineKeyboardButton(f"🏁 إنهاء وحسم: {m[1]} × {m[2]}", callback_data=f"as_score_{m[0]}"))
+    markup.add(InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="adm_main_panel"))
+    bot.send_message(message.chat.id, "🏟️ اختر المباراة لإدخال النتيجة الرسمية وضخ النقاط:", reply_markup=markup)
+
+def admin_delete_list_text(message):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT match_id, home_team, away_team FROM matches WHERE status='ACTIVE'")
+    matches = cursor.fetchall()
+    conn.close()
+    if not matches:
+        bot.send_message(message.chat.id, "❌ لا توجد مباريات نشطة لحذفها حالياً.")
+        return
+    markup = InlineKeyboardMarkup(row_width=1)
+    for m in matches:
+        markup.add(InlineKeyboardButton(f"🗑️ حذف نهائي: {m[1]} × {m[2]}", callback_data=f"ad_del_{m[0]}"))
+    markup.add(InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="adm_main_panel"))
+    bot.send_message(message.chat.id, "⚠️ اختر المباراة للمسح والإلغاء النهائي:", reply_markup=markup)
+
 
 def handle_admin_actions(call):
+    # تم إبقاء الدالة لضمان توافقية الاستدعاءات الخلفية الفرعية فقط
     if not is_admin(call.from_user): return
     action = call.data
-    
-    if action == "adm_add_match":
-        ADMIN_SESSION[call.from_user.id] = {}
-        render_home_cat_selection(call.message)
-        
-    elif action == "adm_add_tournament":
-        ADMIN_SESSION[call.from_user.id] = {"action": "add_tournament"}
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("🏆 الدوريات والأندية", callback_data="t_cat_الدوريات"),
-                   InlineKeyboardButton("🌍 القارات والمنتخبات", callback_data="t_cat_القارات"))
-        markup.add(InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="adm_main_panel"))
-        bot.edit_message_text("🗂️ **[خطوة 1 من 3]** اختر التصنيف الأساسي للبطولة:", call.message.chat.id, call.message.message_id, reply_markup=markup)
-        
-    elif action == "adm_manage_db":
-        admin_manage_db_categories(call)
-
-    elif action == "adm_settle_list":
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT match_id, home_team, away_team FROM matches WHERE status='ACTIVE'")
-        matches = cursor.fetchall()
-        conn.close()
-        if not matches:
-            bot.send_message(call.message.chat.id, "❌ لا توجد مباريات نشطة بحاجة لرصد حالياً.")
-            return
-        markup = InlineKeyboardMarkup(row_width=1)
-        for m in matches:
-            markup.add(InlineKeyboardButton(f"🏁 إنهاء وحسم: {m[1]} × {m[2]}", callback_data=f"as_score_{m[0]}"))
-        markup.add(InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="adm_main_panel"))
-        bot.edit_message_text("🏟️ اختر المباراة لإدخال النتيجة الرسمية وضخ النقاط:", call.message.chat.id, call.message.message_id, reply_markup=markup)
-        
-    elif action == "adm_delete_list":
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT match_id, home_team, away_team FROM matches WHERE status='ACTIVE'")
-        matches = cursor.fetchall()
-        conn.close()
-        if not matches:
-            bot.send_message(call.message.chat.id, "❌ لا توجد مباريات نشطة لحذفها حالياً.")
-            return
-        markup = InlineKeyboardMarkup(row_width=1)
-        for m in matches:
-            markup.add(InlineKeyboardButton(f"🗑️ حذف نهائي: {m[1]} × {m[2]}", callback_data=f"ad_del_{m[0]}"))
-        markup.add(InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="adm_main_panel"))
-        bot.edit_message_text("⚠️ اختر المباراة للمسح والإلغاء النهائي:", call.message.chat.id, call.message.message_id, reply_markup=markup)
-
-    elif action == "adm_manage_users":
-        show_admin_users_page(call.message.chat.id, page=0, message_id=call.message.message_id)
-
-    elif action == "adm_broadcast":
-        msg = bot.send_message(call.message.chat.id, "📢 أرسل الآن نص الرسالة المراد إذاعتها لجميع المشتركين المسجلين:")
-        bot.register_next_step_handler(msg, process_broadcast)
-
-    elif action == "adm_backup":
-        try:
-            with open("contest_master.db", "rb") as db_file:
-                db_data = db_file.read()
-            bio = BytesIO(db_data)
-            bio.name = f"backup_{datetime.now().strftime('%Y_%m_%d_%H%M%S')}.db"
-            bot.send_document(call.message.chat.id, bio, caption="💾 نسخة احتياطية لقاعدة البيانات الحالية لجميع المشتركين.")
-        except Exception as e:
-            bot.send_message(call.message.chat.id, f"❌ حدث خطأ أثناء محاولة عمل النسخة الاحتياطية:\n`{str(e)}`", parse_mode="Markdown")
+    if action == "adm_main_panel":
+        return_to_admin_panel_callback(call)
 
 # ==========================================
 # 👥 محرك إدارة حسابات وبيانات المنافسين المتقدم
@@ -1151,12 +1168,17 @@ def process_tournament_teams(message):
 # ==========================================
 # ⚽ نظام معالج جدولة المباريات (Match Wizard)
 # ==========================================
-def render_home_cat_selection(message):
+def render_home_cat_selection(message, edit=True):
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("🏆 الدوريات والأندية", callback_data="ax_shc_الدوريات"),
                InlineKeyboardButton("🌍 القارات والمنتخبات", callback_data="ax_shc_القارات"))
     markup.add(InlineKeyboardButton("🔙 إلغاء والعودة للوحة التحكم", callback_data="adm_main_panel"))
-    bot.edit_message_text("🗂️ **[الفريق الأول - المستضيف]** اختر التصنيف الأساسي:", message.chat.id, message.message_id, reply_markup=markup)
+    
+    text = "🗂️ **[الفريق الأول - المستضيف]** اختر التصنيف الأساسي:"
+    if edit:
+        bot.edit_message_text(text, message.chat.id, message.message_id, reply_markup=markup)
+    else:
+        bot.send_message(message.chat.id, text, reply_markup=markup)
 
 def render_home_sub_selection(message, uid):
     cat = ADMIN_SESSION[uid]["category_h"]
@@ -1268,7 +1290,7 @@ def build_match_wizard(call):
         ADMIN_SESSION[uid]["time"] = datetime.now() + timedelta(hours=2)
         render_time_adjustment_view(call.message, uid)
         
-    elif action == "ax_b_hcat": render_home_cat_selection(call.message)
+    elif action == "ax_b_hcat": render_home_cat_selection(call.message, edit=True)
     elif action == "ax_b_hsub": render_home_sub_selection(call.message, uid)
     elif action == "ax_b_hteam": render_home_team_selection(call.message, uid)
     elif action == "ax_b_acat": render_away_cat_selection(call.message, uid)
