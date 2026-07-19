@@ -3,12 +3,10 @@ import re
 import sqlite3
 import telebot
 import copy
-import threading
 from flask import Flask, request, abort
 from datetime import datetime, timedelta
 from io import BytesIO
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
-from telebot import apihelper
+from telebot.types import ReplyKeyboardMarkup, KeyboardButton
 
 # ==========================================
 # 🌐 إعداد خادم Flask لتأمين استمرارية السيرفر
@@ -32,7 +30,6 @@ bot = telebot.TeleBot(TOKEN, threaded=False)
 # 🛡️ دالة تأمين النصوص ضد أخطاء الماركداون
 # ==========================================
 def escape_markdown(text):
-    """تنظيف النصوص الديناميكية لمنع انهيار واجهة تيليجرام بسبب الرموز الخاصة"""
     if not text:
         return ""
     for char in ['*', '_', '`', '[']:
@@ -40,7 +37,7 @@ def escape_markdown(text):
     return text
 
 # ==========================================
-# 🗄️ بنك البيانات الكامل للمسابقات (Baseline Static)
+# 🗄️ بنك البيانات الكامل للمسابقات
 # ==========================================
 DATA_BANK = {
     "الدوريات": {
@@ -54,18 +51,17 @@ DATA_BANK = {
     },
     "القارات": {
         "آسيا (قسم غربي) 🧭": ["السعودية🇸🇦", "الإمارات العربية المتحدة🇦🇪", "قطر🇶🇦", "البحرين🇧🇭", "عمان🇴🇲", "الكويت🇰🇼", "العراق🇮🇶", "الأردن🇯🇴", "فلسطين🇵🇸", "لبنان🇱🇧", "سوريا🇸🇾", "اليمن🇾🇪", "إيران🇮🇷", "أوزبكستان🇺🇿", "تركمانستان🇹🇲", "طاجيكستان🇹🇯", "قيرغيزستان🇰🇬", "أفغانستان🇦🇫", "الهند🇮🇳", "باكستان🇵🇰", "بنغلاديش🇧🇩", "نيبال🇳🇵", "بوتان🇧🇹", "سريلانكا🇱🇰", "جزر المالديف🇲🇻"],
-        "آسيا (قسم شرقي) 🌏": ["اليابان🇯🇵", "كوريا الجنوبية🇰🇷", "الصين🇨🇳", "أستراليا🇦🇺", "كوريا الشمالية🇰🇵", "تايبيه الصينية🇹🇼", "هونغ كونغ 🇭🇰", "ماكاو🇲🇴", "منغوليا🇲🇳", "فيتنام🇻🇳", "تايلاند🇹🇭", "ماليزيا🇲🇾", "إندونيسيا🇮🇩", "الفلبين🇵🇭", "سنغافورة🇸🇬", "ميانمار🇲🇲", "كمبوديا🇰🇭", "لاوس🇱🇦", "بروناي🇧🇳", "تيمور الشرقية🇹🇱", "غوام🇬🇺", "جزر ماريانا الشمالية🇲🇵"],
-        "أوروبا 🇪🇺": ["ألبانيا🇦🇱", "أندورا🇦🇩", "أرمينيا🇦🇲", "النمسا🇦🇹", "أذربيجان🇦🇿", "بيلاروسيا🇧🇾", "بلجيكا🇧🇪", "البوسنة والهرسك🇧🇦", "بلغاريا🇧🇬", "كرواتيا🇭🇷", "قبرص🇨🇾", "جمهورية التشيك🇨🇿", "الدنمارك🇩🇰", "إنجلترا🏴󠁧󠁢󠁥󠁮󠁧󠁿", "إستونيا🇪🇪", "جزر فارو🇫🇴", "فنلندا🇫🇮", "فرنسا🇫🇷", "جورجيا🇬🇪", "ألمانيا🇩🇪", "جبل طارق🇬🇮", "اليونان🇬🇷", "المجر🇭🇺", "آيسلندا🇮🇸", "إسرائيل🇮🇱", "إيطاليا🇮🇹", "كازاخستان🇰🇿", "كوسوفو🇽🇰", "لاتفيا🇱🇻", "ليختنشتاين🇱🇮", "ليتوانيا🇱🇹", "لوكسمبورغ🇱🇺", "مالطا🇲🇹", "مولدوفا🇲🇩", "الجبل الأسود🇲🇪", "هولندا🇳🇱", "مقدونيا الشمالية🇲🇰", "أيرلندا الشمالية🏴󠁧󠁢󠁮󠁧󠁿", "النرويج🇳🇴", "بولندا🇵🇱", "البرتغال🇵🇹", "جمهورية أيرلندا🇮🇪", "رومانيا🇷🇴", "روسيا🇷🇺", "سان مارينو🇸🇲", "اسكتلندا🏴󠁧󠁢󠁳󠁣󠁴󠁿", "صربيا🇷🇸", "سلوفاكيا🇸🇰", "سلوفينيا🇸🇮", "إسبانيا🇪🇸", "السويد🇸🇪", "سويسرا🇨🇭", "تركيا🇹🇷", "أوكرانيا🇺🇦", "ويلز🏴󠁧󠁢󠁷󠁬󠁳󠁿"],
+        "آسيا (قسم شرقي) 🌏": ["اليابان🇯🇵", "كوريا الجنوبية🇰🇷", "الصين🇨🇳", "أستراليا🇦🇺", "كوريا الشمالية🇰🇵", "تايبيه الصينية🇹🇼", "هونغ كونغ 🇭🇰", "ماكاو🇲🇴", "منغوليا🇲🇳", "فيتنام🇻🇳", "تايلاند🇹🇭", "ماليزيا🇲🇾", "إندونيسيا🇮🇩", "الفلبين🇵🇭", "سنغافورة🇸🇬", "ميانمار🇲🇪", "كمبوديا🇰🇭", "لاوس🇱🇦", "بروناي🇧🇳", "تيمور الشرقية🇹🇱", "غوام🇬🇺", "جزر ماريانا الشمالية🇲🇵"],
+        "أوروبا 🇪🇺": ["ألبانيا🇦🇱", "أندورا🇦🇩", "أرمينيا🇦🇲", "النمسا🇦🇹", "أذربيجان🇦🇿", "بيلاروسيا🇧🇾", "بلجيكا🇧🇪", "البوسنة والهرسك🇧🇦", "بلغاريا🇧🇬", "كرواتيا🇭🇷", "قبرص🇨🇾", "جمهورية التشيك🇨🇿", "الدنمارك🇩🇰", "إنجلترا🇫🇴", "إستونيا🇪🇪", "جزر فارو🇫🇴", "فنلندا🇫🇮", "فرنسا🇫🇷", "جورجيا🇬🇪", "ألمانيا🇩🇪", "جبل طارق🇬🇮", "اليونان🇬🇷", "المجر🇭🇺", "آيسلندا🇮🇸", "إسرائيل🇮🇱", "إيطاليا🇮🇹", "كازاخستان🇰🇿", "كوسوفو🇽🇰", "لاتفيا🇱🇻", "ليختنشتاين🇱🇮", "ليتوانيا🇱🇹", "لوكسمبورغ🇱🇺", "مالطا🇲🇹", "مولدوفا🇲🇩", "الجبل الأسود🇲🇪", "هولندا🇳🇱", "مقدونيا الشمالية🇲🇰", "أيرلندا الشمالية🇬بان", "النرويج🇳🇴", "بولندا🇵🇱", "البرتغال🇵🇹", "جمهورية أيرلندا🇮🇪", "رومانيا🇷🇴", "روسيا🇷🇺", "سان مارينو🇸🇲", "اسكتلندا 🏴󠁧󠁢󠁳󠁣󠁴󠁿", "صربيا🇷🇸", "سلوفاكيا🇸🇰", "سلوفينيا🇸🇮", "إسبانيا🇪🇸", "السويد🇸🇪", "سويسرا🇨🇭", "تركيا🇹🇷", "أوكرانيا🇺🇦", "ويلز 🏴󠁧󠁢󠁷󠁬󠁳󠁿"],
         "أمريكا الجنوبية 🇦🇷": ["الأرجنتين🇦🇷", "بوليفيا🇧🇴", "البرازيل🇧🇷", "تشيلي🇨🇱", "كولومبيا🇨🇴", "الإكوادور🇪🇨", "باراغواي🇵🇾", "بيرو🇵🇪", "أوروغواي🇺🇾", "فنزويلا🇻🇪"],
-        "أفريقيا (قسم شمالي) 🦅": ["الجزائر🇩🇿", "مصر🇪🇬", "ليبيا🇱🇾", "المغرب🇲🇦", "موريتانيا🇲🇷", "تشاد🇹🇩", "مالي🇲🇱", "النيجر🇳🇪", "بوركينا فاسو🇧🇫"],
-        "أفريقيا (قسم جنوبي) 🦁": ["أنغولا🇦🇴", "بنين🇧🇯", "بوتسوانا🇧🇼", "بوروندي🇧🇮", "الرأس الأخضر🇨🇻", "الكاميرون🇨🇲", "جمهورية أفريقيا الوسطى🇨🇫", "جزر القمر🇰🇲", "الكونغو🇨🇬", "جمهورية الكونغو الديمقراطية🇨🇩", "غينيا الاستوائية🇬🇶", "إريتريا🇪🇷", "إسواتيني🇸🇿", "إثيوبيا🇪🇹", "الغابون🇬🇦", "غامبيا🇬🇲", "غانا🇬🇭", "غينيا🇬🇳", "غينيا بيساو🇬🇼", "ساحل العاج🇨🇮", "كينيا🇰🇪", "ليسوتو🇱🇸", "ليبيريا🇱🇷", "مدغشقر🇲🇬", "مالاوي🇲🇼", "موريشيوس🇲🇺", "موزمبيق🇲🇿", "ناميبيا🇳🇦"],
-        "أوقيانوسيا 🇳🇿": ["نيوزيلندا🇳🇿", "جزر سليمان🇸🇧", "تاهيتي🇵🇫", "فانواتو🇻🇺", "كاليدونيا الجديدة🇳🇨", "بابوا غينيا الجديدة🇵🇬", "فيجي🇫🇯", "ساموا🇼🇸", "ساموا الأمريكية🇦🇸", "تونغا🇹🇴", "جزر كوك🇨🇰"],
+        "أفريقيا (قسم شمالي) 🦅": ["الجزائر🇩🇿", "مصر🇪🇬", "ليبيا🇱🇾", "المغرب🇲🇦", "موريتانيا🇲🇷", "تشاد🇹🇩", "مالي🇲🇱", "النيجر🇿🇼", "بوركينا فاسو🇧🇫"],
+        "أفريقيا (قسم جنوبي) 🦁": ["أنغولا🇦🇴", "بنين🇧じん", "بوتسوانا🇧🇼", "بوروندي🇧🇮", "الرأس الأخضر🇨вих", "الكاميرون🇨🇲", "جمهورية أفريقيا الوسطى🇨🇫", "جزر القمر🇰🇲", "الكونغو🇨🇬", "جمهورية الكونغو الديمقراطية🇨🇩", "غينيا الاستوائية🇬🇶", "إريتريا🇪🇷", "إسواتيني🇸🇿", "إثيوبيا🇪🇹", "الغابون🇬🇦", "غامبيا🇬🇲", "غانا🇬🇭", "غينيا🇬🇳", "غينيا بيساو🇬🇼", "ساحل العاج🇨🇮", "كينيا🇰🇪", "ليسوتو🇱🇸", "ليبيريا🇱🇷", "مدغشقر🇲🇬", "مالاوي🇲🇼", "موريشيوس🇲🇺", "موزمبيق🇲🇿", "ناميبيا🇳🇦"],
+        "أوقيانوسيا 🇳🇿": ["نيوزيلندا🇳🇿", "جزر سليمان🇸🇧", "تاهيتي🇵🇫", "فانواتو🇻🇺", "كاليدونيا الجديدة🇳🇨", "بابوا غينيا الجديدة🇵🇬", "فيجي 🇫يج", "ساموا🇼🇸", "ساموا الأمريكية🇦🇸", "تونغا🇹🇴", "جزر كوك🇨🇰"],
         "أمريكا الشمالية 🇺🇸": ["الولايات المتحدة🇺🇸", "المكسيك🇲🇽", "كندا🇨🇦", "بنما🇵🇦", "كوستاريكا🇨🇷", "هندوراس🇭🇳", "جامايكا🇯🇲", "السلفادور🇸🇻", "غواتيمالا🇬🇹", "هايتي🇭🇹", "كوراساو🇨🇼", "ترينيداد وتوباغو🇹🇹", "نيكاراغوا🇳🇮", "سورينام🇸🇷"]
     }
 }
 
 STATIC_DATA_BANK = copy.deepcopy(DATA_BANK)
-
 ADMIN_SESSION = {}
 USER_SESSION = {}
 
@@ -73,7 +69,7 @@ def is_admin(user):
     return user.id == ADMIN_ID or user.username == ADMIN_USERNAME
 
 # ==========================================
-# ⚡ إدارة قاعدة البيانات وتأمين Concurrency
+# ⚡ إدارة قاعدة البيانات بأعلى كفاءة
 # ==========================================
 def get_db():
     conn = sqlite3.connect('contest_master.db', timeout=15)
@@ -90,7 +86,6 @@ def init_db():
                         phone_number TEXT,
                         points INTEGER DEFAULT 0,
                         banned INTEGER DEFAULT 0)''')
-    
     try:
         cursor.execute("ALTER TABLE users ADD COLUMN banned INTEGER DEFAULT 0")
     except sqlite3.OperationalError:
@@ -110,19 +105,16 @@ def init_db():
                         PRIMARY KEY(user_id, match_id))''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS dynamic_teams (
                         category TEXT, tournament_name TEXT, team_name TEXT)''')
-    
     cursor.execute('''CREATE TABLE IF NOT EXISTS tournament_mods (
                         category TEXT, old_name TEXT, new_name TEXT, status TEXT DEFAULT 'ACTIVE')''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS team_mods (
                         category TEXT, tournament TEXT, old_name TEXT, new_name TEXT, status TEXT DEFAULT 'ACTIVE')''')
-                        
     conn.commit()
     conn.close()
 
 def load_dynamic_tournaments():
     global DATA_BANK
     DATA_BANK = copy.deepcopy(STATIC_DATA_BANK)
-    
     conn = get_db()
     cursor = conn.cursor()
     try:
@@ -171,31 +163,31 @@ def check_registration(message):
     conn.close()
     
     if user and user[2] == 1:
-        bot.send_message(message.chat.id, "🚫 **عذراً، لقد تم حظر حسابك من المشاركة في هذه المنافسة من قبل المشرف!**")
+        bot.send_message(message.chat.id, "🚫 **عذراً، لقد تم حظر حسابك من المشاركة!**")
         return False
     
     if user and user[0] and user[1]:
         return True
     
-    msg = bot.send_message(message.chat.id, "⚠️ **عذراً، هذا البوت خاص بالمنافسة المقفلة.**\nالرجاء إرسال اسمك الثلاثي كاملاً لبدء حجز حسابك وسجلك الرقمي:")
+    msg = bot.send_message(message.chat.id, "⚠️ **عذراً، هذا البوت خاص بالمنافسة المقفلة.**\nالرجاء إرسال اسمك الثلاثي كاملاً لبدء حجز حسابك:")
     bot.register_next_step_handler(msg, register_user_name)
     return False
 
 def register_user_name(message):
     name_text = message.text.strip() if message.text else ""
     if len(name_text.split()) < 3:
-        msg = bot.send_message(message.chat.id, "❌ يجب إرسال الاسم **ثلاثياً** بشكل صحيح لتأمين الحجز، حاول مجدداً:")
+        msg = bot.send_message(message.chat.id, "❌ يجب إرسال الاسم **ثلاثياً** بشكل صحيح، حاول مجدداً:")
         bot.register_next_step_handler(msg, register_user_name)
         return
     
     USER_SESSION[message.from_user.id] = {"reg_name": name_text}
-    msg = bot.send_message(message.chat.id, f"🎯 أهلاً بك *{escape_markdown(name_text)}*.\nالآن يرجى إرسال **رقم هاتفك المكون من 9 أرقام فقط (شبكات يمنية)** ليكون معرّفك:")
+    msg = bot.send_message(message.chat.id, f"🎯 أهلاً بك *{escape_markdown(name_text)}*.\nالآن يرجى إرسال **رقم هاتفك المكون من 9 أرقام (شبكات يمنية)**:")
     bot.register_next_step_handler(msg, register_user_phone)
 
 def register_user_phone(message):
     phone_text = message.text.strip() if message.text else ""
     if not re.match(r'^7[01378]\d{7}$', phone_text):
-        msg = bot.send_message(message.chat.id, "❌ خطأ في تنسيق الرقم! يرجى إرسال رقم هاتف يمني صحيح مكون من **9 أرقام ويبدأ بـ 77، 73، 71، 70، أو 78**:")
+        msg = bot.send_message(message.chat.id, "❌ خطأ في تنسيق الرقم! يرجى إرسال رقم يمني صحيح (9 أرقام يبدأ بـ 77، 73، 71، 70، أو 78):")
         bot.register_next_step_handler(msg, register_user_phone)
         return
     
@@ -210,244 +202,148 @@ def register_user_phone(message):
     conn.close()
     
     USER_SESSION.pop(uid, None)
-        
-    bot.send_message(message.chat.id, f"✅ تم تسجيلك بنجاح!\n📝 الاسم الثلاثي: *{escape_markdown(full_name)}*\n🆔 معرّفك المحجوز: `{phone_text}`")
+    bot.send_message(message.chat.id, f"✅ تم تسجيلك بنجاح!\n📝 الاسم الثلاثي: *{escape_markdown(full_name)}*\n🆔 المعرّف: `{phone_text}`")
     show_main_menu(message)
 
 def show_main_menu(message):
+    uid = message.from_user.id
+    USER_SESSION.pop(uid, None)
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(KeyboardButton("🗳️ التوقعات المتاحة"), KeyboardButton("📊 جدول الترتيب العام"))
     markup.add(KeyboardButton("🏆 مبارياتي الرابحة"), KeyboardButton("ℹ️ معلومات حسابي"))
-    
     if is_admin(message.from_user):
         markup.add(KeyboardButton("⚙️ لوحة تحكم المشرف"))
-        
-    bot.send_message(message.chat.id, "📊 أهلاً بك في الواجهة الرئيسية للمسابقة. يرجى اختيار الإجراء من الأسفل:", reply_markup=markup)
+    bot.send_message(message.chat.id, "📊 القائمة الرئيسية للمسابقة:", reply_markup=markup)
 
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
     if check_registration(message):
         show_main_menu(message)
 
-@bot.message_handler(func=lambda msg: True)
-def handle_text_buttons(message):
-    if not check_registration(message):
-        return
-        
-    # --- أزرار المستخدم الرئيسية ---
-    if message.text == "🗳️ التوقعات المتاحة":
-        show_available_matches(message)
-    elif message.text == "📊 جدول الترتيب العام":
-        show_standings_page(message.chat.id, page=0)
-    elif message.text == "🏆 مبارياتي الرابحة":
-        show_winning_matches(message)
-    elif message.text == "ℹ️ معلومات حسابي":
-        show_my_info(message)
-    elif message.text == "⚙️ لوحة تحكم المشرف" and is_admin(message.from_user):
-        show_admin_panel(message)
-    elif message.text == "🔙 العودة للقائمة الرئيسية":
-        show_main_menu(message)
-        
-    # --- أزرار لوحة تحكم المشرف الرئيسية ---
-    elif is_admin(message.from_user):
-        if message.text == "➕ إضافة وجدولة مباراة جديدة":
-            ADMIN_SESSION[message.from_user.id] = {}
-            render_home_cat_selection(message, edit=False)
-            
-        elif message.text == "🏆 إضافة بطولة جديدة ✨":
-            ADMIN_SESSION[message.from_user.id] = {"action": "add_tournament"}
-            markup = InlineKeyboardMarkup()
-            markup.add(InlineKeyboardButton("🏆 الدوريات والأندية", callback_data="t_cat_الدوريات"),
-                       InlineKeyboardButton("🌍 القارات والمنتخبات", callback_data="t_cat_القارات"))
-            markup.add(InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="adm_main_panel"))
-            bot.send_message(message.chat.id, "🗂️ **[خطوة 1 من 3]** اختر التصنيف الأساسي للبطولة:", reply_markup=markup)
-            
-        elif message.text == "🛠️ إدارة وحذف وتعديل البطولات والفرق":
-            admin_manage_db_categories_text(message)
-            
-        elif message.text == "🏁 رصد نتيجة رسمية وحساب النقاط":
-            admin_settle_list_text(message)
-            
-        elif message.text == "🗑️ حذف مباراة مرسلة بالكامل":
-            admin_delete_list_text(message)
-            
-        elif message.text == "👥 إدارة المنافسين والتحكم بالحسابات":
-            show_admin_users_page(message.chat.id, page=0, message_id=None)
-            
-        elif message.text == "📢 إذاعة رسالة للمشتركين (Broadcast)":
-            msg = bot.send_message(message.chat.id, "📢 أرسل الآن نص الرسالة المراد إذاعتها لجميع المشتركين المسجلين:")
-            bot.register_next_step_handler(msg, process_broadcast)
-            
-        elif message.text == "💾 تحميل نسخة احتياطية للبيانات (Backup)":
-            try:
-                with open("contest_master.db", "rb") as db_file:
-                    db_data = db_file.read()
-                bio = BytesIO(db_data)
-                bio.name = f"backup_{datetime.now().strftime('%Y_%m_%d_%H%M%S')}.db"
-                bot.send_document(message.chat.id, bio, caption="💾 نسخة احتياطية لقاعدة البيانات الحالية لجميع المشتركين.")
-            except Exception as e:
-                bot.send_message(message.chat.id, f"❌ حدث خطأ أثناء محاولة عمل النسخة الاحتياطية:\n`{str(e)}`", parse_mode="Markdown")
-
 # ==========================================
-# 🗳️ محرك التوقعات وإدارة الواجهات الذكية
+# 🗳️ واجهات التوقعات والترتيب المحدثة (Reply)
 # ==========================================
 def show_available_matches(message):
     load_dynamic_tournaments()
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT match_id, category, sub_category, home_team, away_team, start_time, match_type FROM matches WHERE status='ACTIVE'")
+    cursor.execute("SELECT match_id, home_team, away_team, start_time FROM matches WHERE status='ACTIVE'")
     matches = cursor.fetchall()
     
-    markup = InlineKeyboardMarkup(row_width=1)
+    buttons = []
     now = datetime.now()
-    valid_matches_count = 0
-    
     for m in matches:
-        match_id, cat, sub_cat, home, away, s_time, m_type = m
+        match_id, home, away, s_time = m
         try:
             match_dt = datetime.strptime(s_time, "%Y-%m-%d %H:%M")
         except ValueError:
             continue
-            
         if now < match_dt:
-            valid_matches_count += 1
             cursor.execute("SELECT home_pred, away_pred FROM predictions WHERE user_id=? AND match_id=?", (message.from_user.id, match_id))
             pred = cursor.fetchone()
-            
             if pred:
-                btn_text = f"✏️ تعديل: {home} [{pred[0]}-{pred[1]}] {away}"
+                buttons.append(f"⚽ {home} [{pred[0]}-{pred[1]}] {away} (ID:{match_id})")
             else:
-                btn_text = f"⚽ توقع: {home} × {away}"
-            markup.add(InlineKeyboardButton(btn_text, callback_data=f"usr_pred_{match_id}"))
-            
+                buttons.append(f"⚽ {home} × {away} (ID:{match_id})")
     conn.close()
     
-    if valid_matches_count == 0:
-        bot.send_message(message.chat.id, "📭 لا توجد مباريات نشطة أو متاحة للتوقع حالياً.")
+    if not buttons:
+        bot.send_message(message.chat.id, "📭 لا توجد مباريات نشطة للتوقع حالياً.")
         return
         
-    bot.send_message(message.chat.id, "🏟️ المباريات المتاحة للتوقع (التعديل متاح حتى موعد انطلاق اللقاء الرسمي):", reply_markup=markup)
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+    for btn in buttons:
+        markup.add(KeyboardButton(btn))
+    markup.add(KeyboardButton("🔙 العودة للقائمة الرئيسية"))
+    bot.send_message(message.chat.id, "🏟️ اختر المباراة لتسجيل أو تعديل توقعك بالكامل:", reply_markup=markup)
 
-def user_prediction_interface(call):
-    match_id = int(call.data.split("_")[2])
+def user_prediction_flow_init(message, match_id):
+    uid = message.from_user.id
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT home_team, away_team, match_type, start_time FROM matches WHERE match_id=?", (match_id,))
     match = cursor.fetchone()
+    conn.close()
     
     if not match:
-        bot.send_message(call.message.chat.id, "❌ المباراة غير موجودة.")
-        conn.close()
+        bot.send_message(message.chat.id, "❌ المباراة غير موجودة.")
         return
         
     home, away, m_type, s_time = match
     if datetime.now() > datetime.strptime(s_time, "%Y-%m-%d %H:%M"):
-        bot.send_message(call.message.chat.id, "🔒 عذراً، بدأت المباراة وتم إغلاق استقبال التوقعات تلقائياً!")
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-        conn.close()
-        return
-
-    cursor.execute("SELECT home_pred, away_pred, pen_home_pred, pen_away_pred FROM predictions WHERE user_id=? AND match_id=?", (call.from_user.id, match_id))
-    current_pred = cursor.fetchone()
-    conn.close()
-    
-    hp, ap, php, pap = current_pred if current_pred else (0, 0, 0, 0)
-        
-    USER_SESSION[call.from_user.id] = {"match_id": match_id, "hp": hp, "ap": ap, "php": php, "pap": pap, "type": m_type}
-    render_prediction_keyboard(call.message, call.from_user.id, home, away)
-
-def render_prediction_keyboard(message, user_id, home, away):
-    if user_id not in USER_SESSION:
-        return
-    data = USER_SESSION[user_id]
-    markup = InlineKeyboardMarkup()
-    
-    markup.row(
-        InlineKeyboardButton(f"➕ {home}", callback_data="u_inc_h"),
-        InlineKeyboardButton(f"⚽ {data['hp']} - {data['ap']} ⚽", callback_data="none"),
-        InlineKeyboardButton(f"➕ {away}", callback_data="u_inc_a")
-    )
-    markup.row(
-        InlineKeyboardButton(f"➖ {home}", callback_data="u_dec_h"),
-        InlineKeyboardButton("🔄 ريستارت", callback_data="u_reset"),
-        InlineKeyboardButton(f"➖ {away}", callback_data="u_dec_a")
-    )
-    
-    if data['type'] == "خروج مغلوب (ترجيح)" and data['hp'] == data['ap']:
-        markup.row(InlineKeyboardButton("🌟 توقع ركلات الترجيح 🌟", callback_data="none"))
-        markup.row(
-            InlineKeyboardButton(f"➕ ركلات {home}", callback_data="u_inc_ph"),
-            InlineKeyboardButton(f"🥅 {data['php']} - {data['pap']} 🥅", callback_data="none"),
-            InlineKeyboardButton(f"➕ ركلات {away}", callback_data="u_inc_pa")
-        )
-        markup.row(
-            InlineKeyboardButton(f"➖ {home}", callback_data="u_dec_ph"),
-            InlineKeyboardButton(" ", callback_data="none"),
-            InlineKeyboardButton(f"➖ {away}", callback_data="u_dec_pa")
-        )
-        
-    markup.row(InlineKeyboardButton("💾 حفظ وتثبيت التوقع الآن ✅", callback_data="u_save_pred"))
-    
-    try:
-        bot.edit_message_text(f"🎯 **تحديد توقع مباراة:**\n🏟️ {home} × {away}\nقم باستخدام الأزرار لضبط النتيجة المتوقعة بالكامل:", 
-                              message.chat.id, message.message_id, reply_markup=markup, parse_mode="Markdown")
-    except telebot.apihelper.ApiTelegramException:
-        pass
-
-def handle_user_adjustments(call):
-    user_id = call.from_user.id
-    if user_id not in USER_SESSION:
-        bot.send_message(call.message.chat.id, "⚠️ انتهت الجلسة، الرجاء إعادة الضغط من زر التوقعات المتاحة.")
+        bot.send_message(message.chat.id, "🔒 عذراً، بدأت المباراة وتم إغلاق استقبال التوقعات!")
+        show_main_menu(message)
         return
         
-    action = call.data
-    data = USER_SESSION[user_id]
+    USER_SESSION[uid] = {'state': 'predicting_score', 'match_id': match_id, 'home': home, 'away': away, 'type': m_type}
+    bot.send_message(message.chat.id, f"🎯 **توقع مباراة:**\n🏟️ {home} × {away}\nالرجاء إرسال نتيجة توقعك بالصيغة (أهداف المستضيف - أهداف الضيف)\nمثال: `2-1`", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("🔙 العودة للقائمة الرئيسية")), parse_mode="Markdown")
+
+def process_user_score_input(message):
+    uid = message.from_user.id
+    session_data = USER_SESSION[uid]
+    text = message.text.replace(" ", "")
     
-    if action == "u_inc_h": data['hp'] += 1
-    elif action == "u_dec_h" and data['hp'] > 0: data['hp'] -= 1
-    elif action == "u_inc_a": data['ap'] += 1
-    elif action == "u_dec_a" and data['ap'] > 0: data['ap'] -= 1
-    elif action == "u_inc_ph": data['php'] += 1
-    elif action == "u_dec_ph" and data['php'] > 0: data['php'] -= 1
-    elif action == "u_inc_pa": data['pap'] += 1
-    elif action == "u_dec_pa" and data['pap'] > 0: data['pap'] -= 1
-    elif action == "u_reset": data['hp'], data['ap'], data['php'], data['pap'] = 0, 0, 0, 0
-    
-    elif action == "u_save_pred":
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT start_time FROM matches WHERE match_id=?", (data['match_id'],))
-        db_match = cursor.fetchone()
+    score_match = re.match(r'^(\d+)-(\d+)$', text)
+    if not score_match:
+        bot.send_message(message.chat.id, "❌ تنسيق غير صحيح! يرجى إرسال النتيجة بالصيغة المطلوبة (مثال: 2-1):")
+        return
         
-        if not db_match or datetime.now() > datetime.strptime(db_match[0], "%Y-%m-%d %H:%M"):
-            bot.send_message(call.message.chat.id, "🔒 عذراً، انتهت المهلة المحددة! انطلقت المباراة وتم قفل استقبال البيانات.")
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-            conn.close()
-            USER_SESSION.pop(user_id, None)
-            return
-
-        if data['hp'] != data['ap']:
-            data['php'], data['pap'] = 0, 0
-
-        cursor.execute("INSERT OR REPLACE INTO predictions (user_id, match_id, home_pred, away_pred, pen_home_pred, pen_away_pred) VALUES (?, ?, ?, ?, ?, ?)",
-                       (user_id, data['match_id'], data['hp'], data['ap'], data['php'], data['pap']))
-        conn.commit()
-        conn.close()
-        bot.edit_message_text("✅ **تم حفظ وتثبيت توقعك بنجاح!**\nتم قيد النتيجة في سجلاتك الرقمية وسيتم احتساب النقاط عند انتهاء اللقاء.", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-        USER_SESSION.pop(user_id, None)
+    hp = int(score_match.group(1))
+    ap = int(score_match.group(2))
+    match_id = session_data['match_id']
+    m_type = session_data['type']
+    
+    if m_type == "خروج مغلوب (ترجيح)" and hp == ap:
+        session_data['state'] = 'predicting_pen'
+        session_data['hp'] = hp
+        session_data['ap'] = ap
+        bot.send_message(message.chat.id, f"🌟 لقد توقعت التعادل [{hp}-{ap}] في الوقت الأصلي.\nالرجاء إدخال توقع ركلات الترجيح بالصيغة (ركلات المستضيف - ركلات الضيف) مثال: `5-4`:")
         return
         
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT home_team, away_team FROM matches WHERE match_id=?", (data['match_id'],))
-    home, away = cursor.fetchone()
+    cursor.execute("INSERT OR REPLACE INTO predictions (user_id, match_id, home_pred, away_pred, pen_home_pred, pen_away_pred) VALUES (?, ?, ?, ?, 0, 0)",
+                   (uid, match_id, hp, ap))
+    conn.commit()
     conn.close()
-    render_prediction_keyboard(call.message, user_id, home, away)
+    
+    bot.send_message(message.chat.id, f"✅ **تم حفظ وتثبيت توقعك بنجاح!**\n💼 النتيجة: {hp} - {ap}")
+    show_main_menu(message)
 
-# ==========================================
-# 📊 نظام الصفحات لجدول الترتيب (Pagination)
-# ==========================================
-def show_standings_page(chat_id, page=0, message_id=None):
+def process_user_penalties_input(message):
+    uid = message.from_user.id
+    session_data = USER_SESSION[uid]
+    text = message.text.replace(" ", "")
+    
+    pen_match = re.match(r'^(\d+)-(\d+)$', text)
+    if not pen_match:
+        bot.send_message(message.chat.id, "❌ أرسل الركلات بالصيغة الصحيحة (مثال: 5-4):")
+        return
+        
+    php = int(pen_match.group(1))
+    pap = int(pen_match.group(2))
+    
+    if php == pap:
+        bot.send_message(message.chat.id, "❌ لا يمكن انتهاء ركلات الترجيح بالتعادل! حدد الفائز:")
+        return
+        
+    hp = session_data['hp']
+    ap = session_data['ap']
+    match_id = session_data['match_id']
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO predictions (user_id, match_id, home_pred, away_pred, pen_home_pred, pen_away_pred) VALUES (?, ?, ?, ?, ?, ?)",
+                   (uid, match_id, hp, ap, php, pap))
+    conn.commit()
+    conn.close()
+    
+    bot.send_message(message.chat.id, f"✅ **تم تثبيت توقعك بالكامل شامل ركلات الترجيح!**\n💼 النتيجة: {hp}-{ap} (ركلات: {php}-{pap})")
+    show_main_menu(message)
+
+def show_standings_page(message, page=0):
+    uid = message.from_user.id
+    USER_SESSION[uid] = {'state': 'standings', 'page': page}
     items_per_page = 10
     offset = page * items_per_page
     
@@ -455,43 +351,30 @@ def show_standings_page(chat_id, page=0, message_id=None):
     cursor = conn.cursor()
     cursor.execute("SELECT full_name, points FROM users ORDER BY points DESC LIMIT ? OFFSET ?", (items_per_page, offset))
     players = cursor.fetchall()
-    
     cursor.execute("SELECT COUNT(*) FROM users")
     total_users = cursor.fetchone()[0]
     conn.close()
     
     if not players and page == 0:
-        bot.send_message(chat_id, "📊 جدول الترتيب خالي حالياً.")
+        bot.send_message(message.chat.id, "📊 جدول الترتيب خالي حالياً.")
         return
         
     text = f"🏆 **جدول الترتيب العام للمنافسين (الصفحة {page + 1}):**\n\n"
     for idx, player in enumerate(players, 1):
         global_rank = offset + idx
         medal = "🥇" if global_rank == 1 else "🥈" if global_rank == 2 else "🥉" if global_rank == 3 else f"🏅 {global_rank}."
-        safe_name = escape_markdown(player[0])
-        text += f"{medal} {safe_name} ➖ `{player[1]}` نقطة\n"
+        text += f"{medal} {escape_markdown(player[0])} ➖ `{player[1]}` نقطة\n"
         
-    markup = InlineKeyboardMarkup()
-    nav_buttons = []
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    nav_row = []
     if page > 0:
-        nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"std_page_{page - 1}"))
+        nav_row.append(KeyboardButton("⬅️ الصفحة السابقة"))
     if offset + items_per_page < total_users:
-        nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data=f"std_page_{page + 1}"))
-        
-    if nav_buttons:
-        markup.row(*nav_buttons)
-        
-    if message_id:
-        try:
-            bot.edit_message_text(text, chat_id, message_id, reply_markup=markup, parse_mode="Markdown")
-        except telebot.apihelper.ApiTelegramException:
-            pass
-    else:
-        bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
-
-def handle_standings_pagination(call):
-    page = int(call.data.split("_")[2])
-    show_standings_page(call.message.chat.id, page=page, message_id=call.message.message_id)
+        nav_row.append(KeyboardButton("➡️ الصفحة التالية"))
+    if nav_row:
+        markup.add(*nav_row)
+    markup.add(KeyboardButton("🔙 العودة للقائمة الرئيسية"))
+    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
 
 # ==========================================
 # 🏆 عرض تفاصيل ومباريات الحساب
@@ -507,17 +390,15 @@ def show_winning_matches(message):
         JOIN predictions p ON m.match_id = p.match_id
         WHERE m.status = 'FINISHED' AND p.user_id = ?
     ''', (message.from_user.id,))
-    
     rows = cursor.fetchall()
     conn.close()
     
     if not rows:
-        bot.send_message(message.chat.id, "🏆 لا توجد مباريات منتهية قمت بتوقعها حالياً في سجلاتك.")
+        bot.send_message(message.chat.id, "🏆 لا توجد مباريات منتهية قمت بتوقعها حالياً.")
         return
         
     winning_text = "🏆 **سجل النقاط والمباريات المفرزة:**\n\n"
     has_winning = False
-    
     for row in rows:
         home, away, m_type, r_h, r_a, r_ph, r_pa, u_h, u_a, u_ph, u_pa = row
         real_outcome = "HOME" if r_h > r_a else "AWAY" if r_a > r_h else "DRAW"
@@ -525,7 +406,6 @@ def show_winning_matches(message):
         
         pts = 0
         exact_match_score = False
-        
         if u_outcome == real_outcome:
             pts += 5
             if u_h == r_h and u_a == r_a:
@@ -551,11 +431,10 @@ def show_winning_matches(message):
             if m_type == "خروج مغلوب (ترجيح)" and real_outcome == "DRAW":
                 score_str += f" (ركلات {r_ph}-{r_pa})"
                 pred_str += f" (توقعك {u_ph}-{u_pa})"
-                
             winning_text += f"⚽ **{home} × {away}**\n🏁 النتيجة: `{score_str}`\n🗳️ توقعك: `{pred_str}`\n💰 نقاطك: *+{pts}* ن\n───────────────────\n"
                             
     if not has_winning:
-        bot.send_message(message.chat.id, "ℹ️ لم يتم العثور على أي نقاط رابحة في المباريات التي توقعتها حتى الآن.")
+        bot.send_message(message.chat.id, "ℹ️ لم يتم العثور على أي نقاط رابحة في سجلاتك حتى الآن.")
     else:
         bot.send_message(message.chat.id, winning_text, parse_mode="Markdown")
 
@@ -567,18 +446,19 @@ def show_my_info(message):
     conn.close()
     
     full_name, phone_number, points = user if user else (message.from_user.first_name, "غير مسجل", 0)
-    
-    text = f"👤 **معلومات بطاقتك والمحرّف الرقمي الخاص بك:**\n\n" \
+    text = f"👤 **معلومات حسابك الرقمي:**\n\n" \
            f"📝 الاسم الثلاثي: *{escape_markdown(full_name)}*\n" \
-           f"🆔 الهوية الرقمية (الهاتف البنكي): `{phone_number}`\n" \
+           f"📞 رقم الهاتف المسجّل: `{phone_number}`\n" \
            f"💰 رصيدك الإجمالي: *{points}* نقطة"
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
 # ==========================================
-# ⚙️ لوحة الإدارة الرئيسية الجديدة
+# ⚙️ لوحة تحكم المشرف الرئيسية (Reply)
 # ==========================================
 def show_admin_panel(message):
-    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+    uid = message.from_user.id
+    ADMIN_SESSION.pop(uid, None)
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(
         KeyboardButton("➕ إضافة وجدولة مباراة جديدة"),
         KeyboardButton("🏆 إضافة بطولة جديدة ✨"),
@@ -592,21 +472,13 @@ def show_admin_panel(message):
     )
     bot.send_message(message.chat.id, "⚙️ **لوحة التحكم الشاملة لمدير المنظومة:**", reply_markup=markup)
 
-def return_to_admin_panel_callback(call):
-    if not is_admin(call.from_user): return
-    try:
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-    except:
-        pass
-    show_admin_panel(call.message)
-
-# --- دوال استدعاء القوائم الفرعية عبر الأزرار الرئيسية ---
 def admin_manage_db_categories_text(message):
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("🏆 الدوريات والأندية", callback_data="mdb_cat_الدوريات"),
-               InlineKeyboardButton("🌍 القارات والمنتخبات", callback_data="mdb_cat_القارات"))
-    markup.add(InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="adm_main_panel"))
-    bot.send_message(message.chat.id, "🛠️ **إدارة بنك البيانات والمسابقات:** اختر التصنيف المراد إدارته، حذفه أو التعديل عليه:", reply_markup=markup)
+    uid = message.from_user.id
+    ADMIN_SESSION[uid] = {'state': 'db_manage_cat'}
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add(KeyboardButton("🗂️ تصنيف: الدوريات والأندية"), KeyboardButton("🗂️ تصنيف: القارات والمنتخبات"))
+    markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
+    bot.send_message(message.chat.id, "🛠️ **إدارة بنك البيانات:** اختر التصنيف الأساسي للتحرير والتعديل:", reply_markup=markup)
 
 def admin_settle_list_text(message):
     conn = get_db()
@@ -617,11 +489,11 @@ def admin_settle_list_text(message):
     if not matches:
         bot.send_message(message.chat.id, "❌ لا توجد مباريات نشطة بحاجة لرصد حالياً.")
         return
-    markup = InlineKeyboardMarkup(row_width=1)
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
     for m in matches:
-        markup.add(InlineKeyboardButton(f"🏁 إنهاء وحسم: {m[1]} × {m[2]}", callback_data=f"as_score_{m[0]}"))
-    markup.add(InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="adm_main_panel"))
-    bot.send_message(message.chat.id, "🏟️ اختر المباراة لإدخال النتيجة الرسمية وضخ النقاط:", reply_markup=markup)
+        markup.add(KeyboardButton(f"🏁 رصد: {m[1]} × {m[2]} (ID:{m[0]})"))
+    markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
+    bot.send_message(message.chat.id, "🏟️ اختر المباراة لإدخال النتيجة الرسمية وضخ النقاط الحالية للمنافسين:", reply_markup=markup)
 
 def admin_delete_list_text(message):
     conn = get_db()
@@ -632,22 +504,18 @@ def admin_delete_list_text(message):
     if not matches:
         bot.send_message(message.chat.id, "❌ لا توجد مباريات نشطة لحذفها حالياً.")
         return
-    markup = InlineKeyboardMarkup(row_width=1)
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
     for m in matches:
-        markup.add(InlineKeyboardButton(f"🗑️ حذف نهائي: {m[1]} × {m[2]}", callback_data=f"ad_del_{m[0]}"))
-    markup.add(InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="adm_main_panel"))
-    bot.send_message(message.chat.id, "⚠️ اختر المباراة للمسح والإلغاء النهائي:", reply_markup=markup)
-
-def handle_admin_actions(call):
-    if not is_admin(call.from_user): return
-    action = call.data
-    if action == "adm_main_panel":
-        return_to_admin_panel_callback(call)
+        markup.add(KeyboardButton(f"🗑️ حذف: {m[1]} × {m[2]} (ID:{m[0]})"))
+    markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
+    bot.send_message(message.chat.id, "⚠️ اختر المباراة لمسحها وإلغائها بشكل نهائي مع التوقعات الخاصة بها:", reply_markup=markup)
 
 # ==========================================
-# 👥 محرك إدارة حسابات وبيانات المنافسين المتقدم
+# 👥 محرك إدارة المنافسين المتقدم (Reply)
 # ==========================================
-def show_admin_users_page(chat_id, page=0, message_id=None):
+def show_admin_users_page(message, page=0):
+    uid = message.from_user.id
+    ADMIN_SESSION[uid] = {'state': 'users_list', 'page': page}
     items_per_page = 8
     offset = page * items_per_page
     
@@ -660,43 +528,39 @@ def show_admin_users_page(chat_id, page=0, message_id=None):
     conn.close()
     
     if not users_list and page == 0:
-        bot.send_message(chat_id, "👥 قاعدة بيانات المنافسين فارغة تماماً حالياً.")
+        bot.send_message(message.chat.id, "👥 قاعدة بيانات المنافسين فارغة تماماً حالياً.")
         return
         
-    markup = InlineKeyboardMarkup(row_width=1)
-    for uid, name, pts, banned in users_list:
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+    for tuid, name, pts, banned in users_list:
         prefix_icon = "🚫 " if banned == 1 else "👤 "
-        button_text = f"{prefix_icon}{name} ➖ ({pts} ن)"
-        markup.add(InlineKeyboardButton(button_text, callback_data=f"au_v_{uid}_{page}"))
+        markup.add(KeyboardButton(f"{prefix_icon}{name} (ID:{tuid})"))
         
-    nav_buttons = []
+    nav_row = []
     if page > 0:
-        nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"au_p_{page - 1}"))
+        nav_row.append(KeyboardButton("⬅️ سابق المنافسين"))
     if offset + items_per_page < total_users:
-        nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data=f"au_p_{page + 1}"))
-    if nav_buttons:
-        markup.row(*nav_buttons)
-        
-    markup.add(InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="adm_main_panel"))
+        nav_row.append(KeyboardButton("تالي المنافسين ➡️"))
+    if nav_row:
+        markup.add(*nav_row)
+    markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
     
-    text = "👥 **لوحة التحكم بالمنافسين وحساباتهم المفتوحة:**\nاختر منافساً من القائمة أدناه لعرض معطياته، تعديل نقاطه يدوياً، تعديل اسمه، أو تطبيق قرار الحظر:"
-    if message_id:
-        try:
-            bot.edit_message_text(text, chat_id, message_id, reply_markup=markup, parse_mode="Markdown")
-        except telebot.apihelper.ApiTelegramException:
-            pass
-    else:
-        bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
+    bot.send_message(message.chat.id, "👥 **إدارة حسابات المشتركين وسجلاتهم الإجمالية:**\nاختر اسماً من القائمة أدناه لعرض الخيارات والملف المخصص له:", reply_markup=markup)
 
-def render_single_user_management(message, uid, page):
+def render_single_user_management(message, target_uid):
+    uid = message.from_user.id
+    page = ADMIN_SESSION[uid].get('page', 0)
+    ADMIN_SESSION[uid] = {'state': 'manage_user', 'target_uid': target_uid, 'page': page}
+    
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT full_name, username, phone_number, points, banned FROM users WHERE user_id=?", (uid,))
+    cursor.execute("SELECT full_name, username, phone_number, points, banned FROM users WHERE user_id=?", (target_uid,))
     user = cursor.fetchone()
     conn.close()
     
     if not user:
         bot.send_message(message.chat.id, "❌ خطأ، لم يتم العثور على بيانات هذا المستخدم في النظام.")
+        show_admin_users_page(message, page)
         return
         
     name, username, phone, points, banned = user
@@ -705,130 +569,205 @@ def render_single_user_management(message, uid, page):
     
     text = f"👤 **ملف إدارة المنافس الرقمي:**\n\n" \
            f"📝 الاسم الحالي: *{escape_markdown(name)}*\n" \
-           f"🆔 الهوية الرقمية (Telegram ID): `{uid}`\n" \
+           f"🆔 الهوية الرقمية (Telegram ID): `{target_uid}`\n" \
            f"🌐 اليوزر نيم: {escape_markdown(user_handle)}\n" \
            f"📞 رقم الهاتف المسجّل: `{phone}`\n" \
            f"💰 رصيد النقاط الحالي: *{points}* نقطة\n" \
-           f"🔒 حالة الحساب حالياً: *{ban_status}*\n\n" \
-           f"⚙️ استخدم الأزرار بالأسفل لإجراء التعديلات الفورية الصارمة:"
+           f"🔒 حالة الحساب حالياً: *{ban_status}*"
            
-    markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        InlineKeyboardButton("✏️ تعديل الاسم", callback_data=f"au_editname_{uid}_{page}"),
-        InlineKeyboardButton("💰 تعديل النقاط يدوي", callback_data=f"au_editpts_{uid}_{page}")
-    )
-    toggle_ban_text = "🟢 إلغاء الحظر عن المنافس" if banned == 1 else "🚫 حظر المنافس من البوت"
-    markup.add(InlineKeyboardButton(toggle_ban_text, callback_data=f"au_toggleban_{uid}_{page}"))
-    markup.add(InlineKeyboardButton("🔙 العودة للقائمة السابقة", callback_data=f"au_back_{page}"))
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add(KeyboardButton("✏️ تعديل اسم هذا المنافس"), KeyboardButton("💰 تعديل نقاط هذا المنافس"))
+    toggle_ban_text = "🟢 إلغاء حظر الحساب" if banned == 1 else "🚫 تطبيق حظر الحساب"
+    markup.add(KeyboardButton(toggle_ban_text))
+    markup.add(KeyboardButton("🔙 قائمة المنافسين"))
     
-    try:
-        bot.edit_message_text(text, message.chat.id, message.message_id, reply_markup=markup, parse_mode="Markdown")
-    except telebot.apihelper.ApiTelegramException:
-        pass
+    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
 
-def handle_user_management_callbacks(call):
-    if not is_admin(call.from_user): return
-    parts = call.data.split("_")
-    action = parts[1]
-    
-    if action == "p":
-        page = int(parts[2])
-        show_admin_users_page(call.message.chat.id, page=page, message_id=call.message.message_id)
-        
-    elif action == "v":
-        uid = int(parts[2])
-        page = int(parts[3])
-        render_single_user_management(call.message, uid, page)
-        
-    elif action == "toggleban":
-        uid = int(parts[2])
-        page = int(parts[3])
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT banned FROM users WHERE user_id=?", (uid,))
-        res = cursor.fetchone()
-        if res:
-            new_ban = 1 if res[0] == 0 else 0
-            cursor.execute("UPDATE users SET banned=? WHERE user_id=?", (new_ban, uid))
-            conn.commit()
-            bot.send_message(call.message.chat.id, "🚫 تم حظر المشترك بنجاح!" if new_ban==1 else "🟢 تم إلغاء حظر المشترك بنجاح!")
-        conn.close()
-        render_single_user_management(call.message, uid, page)
-        
-    elif action == "editname":
-        uid = int(parts[2])
-        page = int(parts[3])
-        ADMIN_SESSION[call.from_user.id] = {"edit_uid": uid, "page": page, "field": "name"}
-        msg = bot.send_message(call.message.chat.id, "✍️ أرسل الآن الاسم الثلاثي الجديد بالكامل للمنافس:")
-        bot.register_next_step_handler(msg, process_admin_edit_user)
-        
-    elif action == "editpts":
-        uid = int(parts[2])
-        page = int(parts[3])
-        ADMIN_SESSION[call.from_user.id] = {"edit_uid": uid, "page": page, "field": "points"}
-        msg = bot.send_message(call.message.chat.id, "🔢 أرسل القيمة العددية الإجمالية الجديدة للنقاط (مثال: 120 أو إدخل قيمة سالبة كـ -10):")
-        bot.register_next_step_handler(msg, process_admin_edit_user)
-        
-    elif action == "back":
-        page = int(parts[2])
-        show_admin_users_page(call.message.chat.id, page=page, message_id=call.message.message_id)
-
-def process_admin_edit_user(message):
-    admin_id = message.from_user.id
-    if not is_admin(message.from_user) or admin_id not in ADMIN_SESSION or "edit_uid" not in ADMIN_SESSION[admin_id]:
-        return
-        
-    session_data = ADMIN_SESSION[admin_id]
-    target_uid = session_data["edit_uid"]
-    page = session_data["page"]
-    field = session_data["field"]
-    input_text = message.text.strip() if message.text else ""
-    
-    if not input_text:
-        bot.send_message(message.chat.id, "❌ تم إلغاء الإجراء بسبب إدخال نص فارغ.")
-        ADMIN_SESSION.pop(admin_id, None)
-        return
-        
+# ==========================================
+# 🏁 رصد نتائج المباريات الرسمية وحساب النقاط المعقد
+# ==========================================
+def admin_settle_flow_init(message, match_id):
+    uid = message.from_user.id
     conn = get_db()
     cursor = conn.cursor()
-    
-    if field == "name":
-        if len(input_text.split()) < 3:
-            msg = bot.send_message(message.chat.id, "❌ يجب إدخال اسم ثلاثي صحيح لتفادي الانهيار الرقمي للمنافسة، أعد الإرسال مجدداً:")
-            bot.register_next_step_handler(msg, process_admin_edit_user)
-            conn.close()
-            return
-        cursor.execute("UPDATE users SET full_name=? WHERE user_id=?", (input_text, target_uid))
-        conn.commit()
-        bot.send_message(message.chat.id, f"✅ تم بنجاح تعديل اسم المنافس إلى: *{escape_markdown(input_text)}*", parse_mode="Markdown")
-        
-    elif field == "points":
-        if not input_text.isdigit() and not (input_text.startswith('-') and input_text[1:].isdigit()):
-            msg = bot.send_message(message.chat.id, "❌ إدخال خاطئ! يرجى إرسال قيمة رقمية صحيحة فقط لحساب الرصيد الجديد:")
-            bot.register_next_step_handler(msg, process_admin_edit_user)
-            conn.close()
-            return
-        new_points = int(input_text)
-        cursor.execute("UPDATE users SET points=? WHERE user_id=?", (new_points, target_uid))
-        conn.commit()
-        bot.send_message(message.chat.id, f"✅ تم تحديث رصيد النقاط يدوياً إلى الإجمالي الجديد: `{new_points}` نقطة.")
-        
+    cursor.execute("SELECT home_team, away_team, match_type FROM matches WHERE match_id=?", (match_id,))
+    match = cursor.fetchone()
     conn.close()
-    ADMIN_SESSION.pop(admin_id, None)
     
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("👁️ استعراض الحساب المحدث الآن", callback_data=f"au_v_{target_uid}_{page}"))
-    markup.add(InlineKeyboardButton("🔙 العودة لقائمة المنافسين", callback_data=f"au_back_{page}"))
-    bot.send_message(message.chat.id, "⚙️ اختر الإجراء التالي لإدارة بيانات المشتركين وسجلاتهم بكل سهولة:", reply_markup=markup)
+    if not match:
+        bot.send_message(message.chat.id, "❌ المباراة غير مسجلة.")
+        return
+        
+    ADMIN_SESSION[uid] = {'state': 'settling_score', 'match_id': match_id, 'home': match[0], 'away': match[1], 'type': match[2]}
+    bot.send_message(message.chat.id, f"⚽ **إدخال النتيجة الحقيقية الرسمية للفرز:**\n🏟️ {match[0]} × {match[1]}\nأرسل النتيجة بالصيغة (المستضيف - الضيف)، مثال: `3-1`", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("🔙 العودة للوحة التحكم")), parse_mode="Markdown")
 
-# ==========================================
-# 📢 آلية الإذاعة الجماعية (Broadcast System)
-# ==========================================
+def process_admin_settle_score(message):
+    uid = message.from_user.id
+    session_data = ADMIN_SESSION[uid]
+    text = message.text.replace(" ", "")
+    
+    score_match = re.match(r'^(\d+)-(\d+)$', text)
+    if not score_match:
+        bot.send_message(message.chat.id, "❌ صيغة غير صحيحة، أرسل النتيجة مثل: 2-0")
+        return
+        
+    hp = int(score_match.group(1))
+    ap = int(score_match.group(2))
+    match_id = session_data['match_id']
+    m_type = session_data['type']
+    
+    if m_type == "خروج مغلوب (ترجيح)" and hp == ap:
+        session_data['state'] = 'settling_pen'
+        session_data['hp'] = hp
+        session_data['ap'] = ap
+        bot.send_message(message.chat.id, f"🥅 النتيجة تعادل [{hp}-{ap}]. أرسل نتيجة ركلات الترجيح الرسمية الآن بالصيغة 4-3:")
+        return
+        
+    finalize_match_settlement(message, match_id, hp, ap, 0, 0)
+
+def process_admin_settle_penalties(message):
+    uid = message.from_user.id
+    session_data = ADMIN_SESSION[uid]
+    text = message.text.replace(" ", "")
+    
+    pen_match = re.match(r'^(\d+)-(\d+)$', text)
+    if not pen_match:
+        bot.send_message(message.chat.id, "❌ أرسل الركلات بالصيغة الصحيحة 5-3:")
+        return
+        
+    php = int(pen_match.group(1))
+    pap = int(pen_match.group(2))
+    if php == pap:
+        bot.send_message(message.chat.id, "❌ لا يمكن التعادل في ركلات الترجيح الرسمية! حدد الركلات الفائزة:")
+        return
+        
+    hp = session_data['hp']
+    ap = session_data['ap']
+    match_id = session_data['match_id']
+    
+    finalize_match_settlement(message, match_id, hp, ap, php, pap)
+
+def finalize_match_settlement(message, match_id, real_home_score, real_away_score, real_pen_home, real_pen_away):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT match_type, home_team, away_team FROM matches WHERE match_id=?", (match_id,))
+    m_info = cursor.fetchone()
+    m_type, home_t, away_t = m_info
+    
+    real_outcome = "HOME" if real_home_score > real_away_score else "AWAY" if real_away_score > real_home_score else "DRAW"
+    cursor.execute("""
+        SELECT p.user_id, u.full_name, p.home_pred, p.away_pred, p.pen_home_pred, p.pen_away_pred 
+        FROM predictions p 
+        LEFT JOIN users u ON p.user_id = u.user_id 
+        WHERE p.match_id=?
+    """, (match_id,))
+    predictions = cursor.fetchall()
+    
+    report_lines = []
+    for p in predictions:
+        u_id, full_name, u_hp, u_ap, u_php, u_pap = p
+        full_name = full_name if full_name else "مستخدم غير مسجل"
+        calculated_points = 0
+        u_outcome = "HOME" if u_hp > u_ap else "AWAY" if u_ap > u_hp else "DRAW"
+        
+        exact_match_score = False
+        if u_outcome == real_outcome:
+            calculated_points += 5
+            if u_hp == real_home_score and u_ap == real_away_score:
+                calculated_points += 15
+                exact_match_score = True
+        
+        if m_type == "خروج مغلوب (ترجيح)" and real_outcome == "DRAW":
+            real_pen_winner = "HOME" if real_pen_home > real_pen_away else "AWAY"
+            u_pen_winner = "HOME" if u_php > u_pap else "AWAY"
+            exact_pen_score = False
+            if u_pen_winner == real_pen_winner:
+                calculated_points += 10
+                if u_php == real_pen_home and u_pap == real_pen_away:
+                    calculated_points += 15
+                    exact_pen_score = True
+            if exact_match_score and exact_pen_score:
+                calculated_points += 30
+                
+        cursor.execute("UPDATE users SET points = points + ? WHERE user_id = ?", (calculated_points, u_id))
+        pred_str = f"[{u_hp} - {u_ap}]"
+        if m_type == "خروج مغلوب (ترجيح)" and u_outcome == "DRAW":
+            pred_str += f" (ترجيح: {u_php}-{u_pap})"
+        report_lines.append(f"👤 {escape_markdown(full_name)} ➖ توقع: `{pred_str}` ➖ كسب: *+{calculated_points}* ن")
+        
+    cursor.execute("UPDATE matches SET status='FINISHED', home_score=?, away_score=?, pen_home_score=?, pen_away_score=? WHERE match_id=?", 
+                   (real_home_score, real_away_score, real_pen_home, real_pen_away, match_id))
+    conn.commit()
+    conn.close()
+    
+    bot.send_message(message.chat.id, "🎉 **تم حسم ورصد المباراة بنجاح وتحديث كافة أرصدة المتسابقين أوتوماتيكياً!**")
+    score_str = f"[{real_home_score} - {real_away_score}]"
+    if m_type == "خروج مغلوب (ترجيح)" and real_outcome == "DRAW":
+        score_str += f" (ركلات ترجيح: {real_pen_home}-{real_pen_away})"
+        
+    report_header = f"📊 **تقرير الفرز للمباراة:**\n⚽ {home_t} × {away_t}\n🏁 النتيجة الرسمية: `{score_str}`\n───────────────────\n"
+    if not report_lines:
+        bot.send_message(message.chat.id, report_header + "📭 لم يقم أي منافس بتوقع هذه المباراة.")
+    else:
+        current_msg = report_header
+        for line in report_lines:
+            if len(current_msg) + len(line) + 2 > 4000:
+                bot.send_message(message.chat.id, current_msg, parse_mode="Markdown")
+                current_msg = "📊 **تابع تقرير التوقعات:**\n───────────────────\n"
+            current_msg += line + "\n"
+        if current_msg:
+            bot.send_message(message.chat.id, current_msg, parse_mode="Markdown")
+            
+    show_admin_panel(message)
+
+def process_admin_wizard_time(message):
+    uid = message.from_user.id
+    state_data = ADMIN_SESSION[uid]
+    text = message.text.strip()
+    
+    if text == "⏱️ بعد ساعتين تلقائياً":
+        dt = datetime.now() + timedelta(hours=2)
+        time_str = dt.strftime("%Y-%m-%d %H:%M")
+    else:
+        try:
+            dt = datetime.strptime(text, "%Y-%m-%d %H:%M")
+            time_str = text
+        except ValueError:
+            bot.send_message(message.chat.id, "❌ صيغة الوقت خاطئة! يرجى إدخال الوقت بالصيغة الدقيقة المطلوبة `YYYY-MM-DD HH:MM`:")
+            return
+            
+    cat_str = state_data['cat_h'] if state_data['cat_h'] == state_data['cat_a'] else f"{state_data['cat_h']} - {state_data['cat_a']}"
+    sub_cat_str = state_data['sub_h'] if state_data['sub_h'] == state_data['sub_a'] else f"{state_data['sub_h']} × {state_data['sub_a']}"
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO matches (category, sub_category, home_team, away_team, match_type, start_time) VALUES (?, ?, ?, ?, ?, ?)",
+                   (cat_str, sub_cat_str, state_data['home_team'], state_data['away_team'], state_data['match_type'], time_str))
+    conn.commit()
+    conn.close()
+    
+    bot.send_message(message.chat.id, f"🚀 **تمت الجدولة والنشر بنجاح للمباراة!**\n🏟️ {state_data['home_team']} × {state_data['away_team']}\n⏱️ موعد الإغلاق: {time_str}")
+    show_admin_panel(message)
+
+def delete_match_completely(message, match_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM matches WHERE match_id=?", (match_id,))
+    cursor.execute("DELETE FROM predictions WHERE match_id=?", (match_id,))
+    conn.commit()
+    conn.close()
+    bot.send_message(message.chat.id, "🗑️ **تم حذف المباراة وكافة توقعاتها المرتبطة بها نهائياً من النظام.**")
+    show_admin_panel(message)
+
 def process_broadcast(message):
     if not is_admin(message.from_user): return
     broadcast_text = message.text.strip() if message.text else ""
+    if broadcast_text == "🔙 العودة للوحة التحكم":
+        show_admin_panel(message)
+        return
     if not broadcast_text:
         bot.send_message(message.chat.id, "❌ تم إلغاء الإذاعة بسبب إرسال نص فارغ.")
+        show_admin_panel(message)
         return
         
     conn = get_db()
@@ -845,696 +784,427 @@ def process_broadcast(message):
         except Exception:
             failed += 1
             
-    bot.send_message(message.chat.id, f"📢 **تمت الإذاعة الجماعية بنجاح!**\n\n🟢 تسليم ناجح: `{success}`\n🔴 تعذر الإرسال (حظر البوت): `{failed}`", parse_mode="Markdown")
+    bot.send_message(message.chat.id, f"📢 **تمت الإذاعة الجماعية بنجاح!**\n\n🟢 تسليم ناجح: `{success}`\n🔴 تعذر الإرسال: `{failed}`", parse_mode="Markdown")
+    show_admin_panel(message)
 
 # ==========================================
-# 🏆 معالج إضافة البطولات المخصصة وإدارة بنك البيانات (CRUD)
+# 🛑 البوابة الموحدة والذكية لفرز مدخلات النص والتحكم بالحالات (Master Text Router)
 # ==========================================
-def admin_manage_db_tournaments(call):
-    if not is_admin(call.from_user): return
-    cat = call.data.split("_")[2]
-    load_dynamic_tournaments()
-    
-    markup = InlineKeyboardMarkup(row_width=2)
-    if cat in DATA_BANK:
-        for tour in DATA_BANK[cat].keys():
-            markup.add(InlineKeyboardButton(tour, callback_data=f"mdb_tr_{cat}_{tour}"))
-            
-    markup.add(InlineKeyboardButton("➕ إضافة بطولة جديدة لهذا القسم", callback_data=f"mdb_addtour_{cat}"))
-    markup.add(InlineKeyboardButton("🔙 العودة للخلف", callback_data="adm_manage_db"))
-    bot.edit_message_text(f"🗂️ **تصفح بطولات قسم [{cat}]:** اختر بطولة لعرض خيارات التعديل، الحذف بالكامل أو إدارة أنديتها:", call.message.chat.id, call.message.message_id, reply_markup=markup)
-
-def admin_add_tour_from_manage(call):
-    if not is_admin(call.from_user): return
-    cat = call.data.split("_")[2]
-    ADMIN_SESSION[call.from_user.id] = {"t_category": cat}
-    msg = bot.edit_message_text("✍️ **[خطوة 2 من 3]** أرسل اسم البطولة الجديدة ليتم حجزها ومزامنتها بنجاح (مثال: دوري أبطال أوروبا):", call.message.chat.id, call.message.message_id)
-    bot.register_next_step_handler(msg, process_tournament_name)
-
-def admin_manage_single_tournament(call):
-    if not is_admin(call.from_user): return
-    parts = call.data.split("_")
-    cat = parts[2]
-    tour = parts[3]
-    
-    markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        InlineKeyboardButton("✏️ تعديل اسم هذه البطولة", callback_data=f"mdbt_edit_{cat}_{tour}"),
-        InlineKeyboardButton("🗑️ حذف هذه البطولة بالكامل", callback_data=f"mdbt_del_{cat}_{tour}"),
-        InlineKeyboardButton("👟 استعراض وإدارة الفرق الحالية", callback_data=f"mdbt_teams_{cat}_{tour}_0"),
-        InlineKeyboardButton("➕ إضافة فريق جديد للبطولة", callback_data=f"mdbt_addteam_{cat}_{tour}"),
-        InlineKeyboardButton("🔙 العودة لقائمة البطولات", callback_data=f"mdb_cat_{cat}")
-    )
-    bot.edit_message_text(f"🏆 **إدارة مسار البطولة:** {tour}\n💼 القسم الأساسي: {cat}\n\nاختر الإجراء الفوري والمطلوب تطبيقه:", call.message.chat.id, call.message.message_id, reply_markup=markup)
-
-def admin_delete_tournament(call):
-    if not is_admin(call.from_user): return
-    parts = call.data.split("_")
-    cat = parts[2]
-    tour = parts[3]
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM dynamic_teams WHERE category=? AND tournament_name=?", (cat, tour))
-    cursor.execute("INSERT OR REPLACE INTO tournament_mods (category, old_name, new_name, status) VALUES (?, ?, ?, 'DELETED')", (cat, tour, ''))
-    conn.commit()
-    conn.close()
-    
-    load_dynamic_tournaments()
-    bot.send_message(call.message.chat.id, f"🗑️ تم حذف بطولة {tour} وكافة السجلات المرتبطة بها نهائياً!")
-    call.data = f"mdb_cat_{cat}"
-    admin_manage_db_tournaments(call)
-
-def admin_edit_tournament_prompt(call):
-    if not is_admin(call.from_user): return
-    parts = call.data.split("_")
-    cat = parts[2]
-    tour = parts[3]
-    
-    ADMIN_SESSION[call.from_user.id] = {"action": "rename_tournament", "cat": cat, "tour": tour}
-    msg = bot.send_message(call.message.chat.id, f"✍️ أرسل الآن الاسم الجديد البديل لبطولة *{escape_markdown(tour)}*:")
-    bot.register_next_step_handler(msg, process_rename_tournament)
-
-def process_rename_tournament(message):
+@bot.message_handler(func=lambda msg: True)
+def handle_text_buttons(message):
+    if not check_registration(message):
+        return
+        
     uid = message.from_user.id
-    if uid not in ADMIN_SESSION or ADMIN_SESSION[uid].get("action") != "rename_tournament": return
-    sess = ADMIN_SESSION[uid]
-    new_name = message.text.strip() if message.text else ""
-    if not new_name:
-        bot.send_message(message.chat.id, "❌ اسم غير صالح. تم إلغاء العملية.")
-        ADMIN_SESSION.pop(uid, None)
-        return
-        
-    cat = sess["cat"]
-    old_name = sess["tour"]
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE dynamic_teams SET tournament_name=? WHERE category=? AND tournament_name=?", (new_name, cat, old_name))
-    cursor.execute("INSERT OR REPLACE INTO tournament_mods (category, old_name, new_name, status) VALUES (?, ?, ?, 'ACTIVE')", (cat, old_name, new_name))
-    cursor.execute("UPDATE team_mods SET tournament=? WHERE category=? AND tournament=?", (new_name, cat, old_name))
-    conn.commit()
-    conn.close()
-    
-    load_dynamic_tournaments()
-    bot.send_message(message.chat.id, f"✅ تم تعديل وتغيير اسم البطولة بنجاح إلى: *{escape_markdown(new_name)}*")
-    ADMIN_SESSION.pop(uid, None)
-    show_main_menu(message)
-
-def admin_add_team_prompt(call):
-    if not is_admin(call.from_user): return
-    parts = call.data.split("_")
-    cat = parts[2]
-    tour = parts[3]
-    
-    ADMIN_SESSION[call.from_user.id] = {"action": "add_single_team", "cat": cat, "tour": tour}
-    msg = bot.send_message(call.message.chat.id, f"⚽ أرسل اسم النادي أو المنتخب الجديد المراد ضمه لبطولة *{escape_markdown(tour)}*:")
-    bot.register_next_step_handler(msg, process_add_single_team)
-
-def process_add_single_team(message):
-    uid = message.from_user.id
-    if uid not in ADMIN_SESSION or ADMIN_SESSION[uid].get("action") != "add_single_team": return
-    sess = ADMIN_SESSION[uid]
-    team_name = message.text.strip() if message.text else ""
-    if not team_name:
-        bot.send_message(message.chat.id, "❌ الاسم فارغ! تم الإلغاء.")
-        ADMIN_SESSION.pop(uid, None)
-        return
-        
-    cat = sess["cat"]
-    tour = sess["tour"]
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO dynamic_teams (category, tournament_name, team_name) VALUES (?, ?, ?)", (cat, tour, team_name))
-    conn.commit()
-    conn.close()
-    
-    load_dynamic_tournaments()
-    bot.send_message(message.chat.id, f"✅ تم إضافة الفريق *{escape_markdown(team_name)}* بنجاح إلى البطولة المحددة!")
-    ADMIN_SESSION.pop(uid, None)
-    show_main_menu(message)
-
-def admin_manage_teams_page(call):
-    if not is_admin(call.from_user): return
-    parts = call.data.split("_")
-    cat = parts[2]
-    tour = parts[3]
-    page = int(parts[4])
-    
-    load_dynamic_tournaments()
-    teams_list = DATA_BANK.get(cat, {}).get(tour, [])
-    
-    items_per_page = 10
-    offset = page * items_per_page
-    current_teams = teams_list[offset:offset+items_per_page]
-    
-    markup = InlineKeyboardMarkup(row_width=2)
-    for team in current_teams:
-        full_idx = teams_list.index(team)
-        markup.add(InlineKeyboardButton(f"⚽ {team}", callback_data=f"mdbm_tm_{cat}_{tour}_{full_idx}_{page}"))
-        
-    nav_buttons = []
-    if page > 0:
-        nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"mdbt_teams_{cat}_{tour}_{page - 1}"))
-    if offset + items_per_page < len(teams_list):
-        nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data=f"mdbt_teams_{cat}_{tour}_{page + 1}"))
-    if nav_buttons:
-        markup.row(*nav_buttons)
-        
-    markup.add(InlineKeyboardButton("🔙 عودة للبطولة", callback_data=f"mdb_tr_{cat}_{tour}"))
-    bot.edit_message_text(f"💡 **استعراض فرق [{tour}] (صفحة {page+1}):**\nاختر النادي المراد حذفه أو تعديل اسمه يدوياً:", call.message.chat.id, call.message.message_id, reply_markup=markup)
-
-def admin_single_team_actions(call):
-    if not is_admin(call.from_user): return
-    parts = call.data.split("_")
-    cat = parts[2]
-    tour = parts[3]
-    full_idx = int(parts[4])
-    page = int(parts[5])
-    
-    load_dynamic_tournaments()
-    teams_list = DATA_BANK.get(cat, {}).get(tour, [])
-    if full_idx >= len(teams_list):
-        bot.send_message(call.message.chat.id, "❌ خطأ في جلب بيانات النادي.")
-        return
-        
-    team_name = teams_list[full_idx]
-    
-    markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        InlineKeyboardButton(f"✏️ تعديل اسم: {team_name}", callback_data=f"mdbtm_edit_{cat}_{tour}_{full_idx}_{page}"),
-        InlineKeyboardButton(f"🗑️ حذف هذا الفريق من البطولة نهائياً", callback_data=f"mdbtm_del_{cat}_{tour}_{full_idx}_{page}"),
-        InlineKeyboardButton("🔙 العودة لقائمة الفرق", callback_data=f"mdbt_teams_{cat}_{tour}_{page}")
-    )
-    bot.edit_message_text(f"⚽ **لوحة التحكم بالكيان:** {team_name}\n🏆 البطولة: {tour}\n💼 القسم: {cat}", call.message.chat.id, call.message.message_id, reply_markup=markup)
-
-def admin_delete_single_team(call):
-    if not is_admin(call.from_user): return
-    parts = call.data.split("_")
-    cat = parts[2]
-    tour = parts[3]
-    full_idx = int(parts[4])
-    page = int(parts[5])
-    
-    load_dynamic_tournaments()
-    teams_list = DATA_BANK.get(cat, {}).get(tour, [])
-    if full_idx >= len(teams_list): return
-    team_name = teams_list[full_idx]
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM dynamic_teams WHERE category=? AND tournament_name=? AND team_name=?", (cat, tour, team_name))
-    cursor.execute("INSERT OR REPLACE INTO team_mods (category, tournament, old_name, new_name, status) VALUES (?, ?, ?, '', 'DELETED')", (cat, tour, team_name))
-    conn.commit()
-    conn.close()
-    
-    load_dynamic_tournaments()
-    bot.send_message(call.message.chat.id, f"🗑️ تم سحب وإلغاء {team_name} من البطولة!")
-    call.data = f"mdbt_teams_{cat}_{tour}_{page}"
-    admin_manage_teams_page(call)
-
-def admin_edit_team_prompt(call):
-    if not is_admin(call.from_user): return
-    parts = call.data.split("_")
-    cat = parts[2]
-    tour = parts[3]
-    full_idx = int(parts[4])
-    page = int(parts[5])
-    
-    load_dynamic_tournaments()
-    teams_list = DATA_BANK.get(cat, {}).get(tour, [])
-    if full_idx >= len(teams_list): return
-    team_name = teams_list[full_idx]
-    
-    ADMIN_SESSION[call.from_user.id] = {"action": "rename_team", "cat": cat, "tour": tour, "old_team": team_name, "page": page}
-    msg = bot.send_message(call.message.chat.id, f"✍️ أرسل الاسم الجديد المعدّل للفريق الحالي *{escape_markdown(team_name)}*:")
-    bot.register_next_step_handler(msg, process_rename_team)
-
-def process_rename_team(message):
-    uid = message.from_user.id
-    if uid not in ADMIN_SESSION or ADMIN_SESSION[uid].get("action") != "rename_team": return
-    sess = ADMIN_SESSION[uid]
-    new_team_name = message.text.strip() if message.text else ""
-    if not new_team_name:
-        bot.send_message(message.chat.id, "❌ إدخال خاطئ. تم الإلغاء.")
-        ADMIN_SESSION.pop(uid, None)
-        return
-        
-    cat = sess["cat"]
-    tour = sess["tour"]
-    old_team = sess["old_team"]
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE dynamic_teams SET team_name=? WHERE category=? AND tournament_name=? AND team_name=?", (new_team_name, cat, tour, old_team))
-    cursor.execute("INSERT OR REPLACE INTO team_mods (category, tournament, old_name, new_name, status) VALUES (?, ?, ?, ?, 'ACTIVE')", (cat, tour, old_team, new_team_name))
-    conn.commit()
-    conn.close()
-    
-    load_dynamic_tournaments()
-    bot.send_message(message.chat.id, f"✅ تم تعديل المسمى بنجاح إلى: *{escape_markdown(new_team_name)}*")
-    ADMIN_SESSION.pop(uid, None)
-    show_main_menu(message)
-
-def handle_tournament_category(call):
-    if not is_admin(call.from_user): return
-    uid = call.from_user.id
-    if uid not in ADMIN_SESSION: ADMIN_SESSION[uid] = {}
-    
-    ADMIN_SESSION[uid]["t_category"] = call.data.replace("t_cat_", "")
-    msg = bot.edit_message_text("✍️ **[خطوة 2 من 3]** أرسل اسم البطولة الجديدة (مثال: دوري أبطال أوروبا):", call.message.chat.id, call.message.message_id)
-    bot.register_next_step_handler(msg, process_tournament_name)
-
-def process_tournament_name(message):
-    uid = message.from_user.id
-    if uid not in ADMIN_SESSION:
-        show_admin_panel(message)
-        return
-        
-    tour_name = message.text.strip() if message.text else ""
-    if not tour_name:
-        msg = bot.send_message(message.chat.id, "❌ اسم غير صالح، يرجى إعادة الإرسال:")
-        bot.register_next_step_handler(msg, process_tournament_name)
-        return
-        
-    ADMIN_SESSION[uid]["t_name"] = tour_name
-    msg = bot.send_message(message.chat.id, f"📋 **[خطوة 3 من 3]** أرسل الآن **أسماء الفرق** التابعة لها.\n⚠️ اكتب كل فريق في **سطر منفصل**:")
-    bot.register_next_step_handler(msg, process_tournament_teams)
-
-def process_tournament_teams(message):
-    uid = message.from_user.id
-    if uid not in ADMIN_SESSION or "t_name" not in ADMIN_SESSION[uid]:
-        show_admin_panel(message)
-        return
-        
     text = message.text.strip() if message.text else ""
-    if not text:
-        msg = bot.send_message(message.chat.id, "❌ الرجاء إدخال فرق صحيحة:")
-        bot.register_next_step_handler(msg, process_tournament_teams)
+    
+    # 1. أوامر الملاحة العالمية الموحدة للإلغاء والعودة الفورية
+    if text == "🔙 العودة للقائمة الرئيسية":
+        show_main_menu(message)
+        return
+    elif text == "🔙 العودة للوحة التحكم" and is_admin(message.from_user):
+        show_admin_panel(message)
         return
         
-    teams = [t.strip() for t in re.split(r'[\n,]+', text) if t.strip()]
-    cat = ADMIN_SESSION[uid]["t_category"]
-    tour_name = ADMIN_SESSION[uid]["t_name"]
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    for team in teams:
-        cursor.execute("INSERT INTO dynamic_teams (category, tournament_name, team_name) VALUES (?, ?, ?)", (cat, tour_name, team))
-    conn.commit()
-    conn.close()
-    
-    load_dynamic_tournaments()
-    bot.send_message(message.chat.id, f"🏆 **تمت إضافة البطولة بنجاح!**\n\n🗂️ التصنيف: *{cat}*\n🥇 البطولة: *{tour_name}*\n👥 عدد الفرق: `{len(teams)}` فريق.")
-    ADMIN_SESSION.pop(uid, None)
-    show_main_menu(message)
+    # 2. فحص حالات جلسات المستخدمين (User States)
+    if uid in USER_SESSION:
+        state_data = USER_SESSION[uid]
+        state = state_data.get('state')
+        if state == 'predicting_score':
+            process_user_score_input(message)
+            return
+        elif state == 'predicting_pen':
+            process_user_penalties_input(message)
+            return
+        elif state == 'standings':
+            if text == "➡️ الصفحة التالية":
+                show_standings_page(message, page=state_data.get('page', 0) + 1)
+                return
+            elif text == "⬅️ الصفحة السابقة":
+                show_standings_page(message, page=max(0, state_data.get('page', 0) - 1))
+                return
 
-# ==========================================
-# ⚽ نظام معالج جدولة المباريات (Match Wizard)
-# ==========================================
-def render_home_cat_selection(message, edit=True):
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("🏆 الدوريات والأندية", callback_data="ax_shc_الدوريات"),
-               InlineKeyboardButton("🌍 القارات والمنتخبات", callback_data="ax_shc_القارات"))
-    markup.add(InlineKeyboardButton("🔙 إلغاء والعودة للوحة التحكم", callback_data="adm_main_panel"))
-    
-    text = "🗂️ **[الفريق الأول - المستضيف]** اختر التصنيف الأساسي:"
-    if edit:
-        bot.edit_message_text(text, message.chat.id, message.message_id, reply_markup=markup)
-    else:
-        bot.send_message(message.chat.id, text, reply_markup=markup)
-
-def render_home_sub_selection(message, uid):
-    cat = ADMIN_SESSION[uid]["category_h"]
-    markup = InlineKeyboardMarkup(row_width=2)
-    for sub in DATA_BANK[cat].keys():
-        markup.add(InlineKeyboardButton(sub, callback_data=f"ax_shs_{sub}"))
-    markup.add(InlineKeyboardButton("🔙 عودة للخلف", callback_data="ax_b_hcat"))
-    bot.edit_message_text(f"📁 **[الفريق الأول]** تصنيف *{cat}* ➖ اختر الفئة الفرعية:", message.chat.id, message.message_id, reply_markup=markup)
-
-def render_home_team_selection(message, uid):
-    cat = ADMIN_SESSION[uid]["category_h"]
-    sub = ADMIN_SESSION[uid]["sub_category_h"]
-    markup = InlineKeyboardMarkup(row_width=2)
-    for idx, team in enumerate(DATA_BANK[cat][sub]):
-        markup.add(InlineKeyboardButton(team, callback_data=f"ax_sht_{idx}"))
-    markup.add(InlineKeyboardButton("🔙 عودة للخلف", callback_data="ax_b_hsub"))
-    bot.edit_message_text(f"🏠 **[الفريق الأول]** اختر الفريق الأول (المستضيف) من فئة *{sub}*:", message.chat.id, message.message_id, reply_markup=markup)
-
-def render_away_cat_selection(message, uid):
-    home_team = ADMIN_SESSION[uid]["home_team"]
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("🏆 الدوريات والأندية", callback_data="ax_sac_الدوريات"),
-               InlineKeyboardButton("🌍 القارات والمنتخبات", callback_data="ax_sac_القارات"))
-    markup.add(InlineKeyboardButton("🔙 عودة لتغيير الفريق الأول", callback_data="ax_b_hteam"))
-    bot.edit_message_text(f"🗂️ **[الفريق الثاني - الضيف]** اختر تصنيفه الآن\n💡 (المستضيف الحالي: *{home_team}*):", message.chat.id, message.message_id, reply_markup=markup)
-
-def render_away_sub_selection(message, uid):
-    cat = ADMIN_SESSION[uid]["category_a"]
-    markup = InlineKeyboardMarkup(row_width=2)
-    for sub in DATA_BANK[cat].keys():
-        markup.add(InlineKeyboardButton(sub, callback_data=f"ax_sas_{sub}"))
-    markup.add(InlineKeyboardButton("🔙 عودة للخلف", callback_data="ax_b_acat"))
-    bot.edit_message_text(f"📁 **[الفريق الثاني]** تصنيف *{cat}* ➖ اختر الفئة الفرعية للضيف:", message.chat.id, message.message_id, reply_markup=markup)
-
-def render_away_team_selection(message, uid):
-    cat = ADMIN_SESSION[uid]["category_a"]
-    sub = ADMIN_SESSION[uid]["sub_category_a"]
-    home_team = ADMIN_SESSION[uid]["home_team"]
-    markup = InlineKeyboardMarkup(row_width=2)
-    for idx, team in enumerate(DATA_BANK[cat][sub]):
-        if team != home_team:  
-            markup.add(InlineKeyboardButton(team, callback_data=f"ax_sat_{idx}"))
-    markup.add(InlineKeyboardButton("🔙 عودة للخلف", callback_data="ax_b_asub"))
-    bot.edit_message_text(f"✈️ **[الفريق الثاني]** اختر فريق الضيف من فئة *{sub}*:", message.chat.id, message.message_id, reply_markup=markup)
-
-def render_match_type_selection(message, uid):
-    home = ADMIN_SESSION[uid]["home_team"]
-    away = ADMIN_SESSION[uid]["away_team"]
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("📋 مباراة دوري عادية", callback_data="ax_st_مباراة عادية"),
-               InlineKeyboardButton("⚔️ خروج مغلوب (ترجيح)", callback_data="ax_st_خروج مغلوب (ترجيح)"))
-    markup.add(InlineKeyboardButton("🔙 عودة لتغيير الفريق الثاني", callback_data="ax_b_ateam"))
-    bot.edit_message_text(f"⚙️ **تحديد نظام الفرز:**\n🏟️ المباراة: *{home}* × *{away}*\nاختر نوع ونظام النقاط المعتمد:", message.chat.id, message.message_id, reply_markup=markup, parse_mode="Markdown")
-
-def render_time_adjustment_view(message, admin_id):
-    data = ADMIN_SESSION[admin_id]
-    current_set_time = data["time"].strftime("%Y-%m-%d %H:%M")
-    markup = InlineKeyboardMarkup()
-    
-    markup.row(
-        InlineKeyboardButton("➕ 1 يوم", callback_data="at_p1d"), 
-        InlineKeyboardButton("➕ 1 ساعة", callback_data="at_p1h"), 
-        InlineKeyboardButton("➕ 15 دقيقة", callback_data="at_p15m"),
-        InlineKeyboardButton("➕ 1 دقيقة", callback_data="at_p1m")
-    )
-    markup.row(
-        InlineKeyboardButton("➖ 1 يوم", callback_data="at_m1d"), 
-        InlineKeyboardButton("➖ 1 ساعة", callback_data="at_m1h"), 
-        InlineKeyboardButton("➖ 15 دقيقة", callback_data="at_m15m"), 
-        InlineKeyboardButton("➖ 1 دقيقة", callback_data="at_m1m")
-    )
-    markup.row(InlineKeyboardButton(f"🚀 اعتماد ونشر المباراة [{current_set_time}]", callback_data="at_confirm"))
-    markup.row(InlineKeyboardButton("🔙 عودة لتغيير نوع المباراة", callback_data="ax_b_type"))
-    
-    bot.edit_message_text(f"📆 **ضبط الوقت والتاريخ للمباراة بالأزرار:**\n\n🏟️ المباراة: {data['home_team']} × {data['away_team']}\n⏱️ موعد الإغلاق: `{current_set_time}`", message.chat.id, message.message_id, reply_markup=markup, parse_mode="Markdown")
-
-def build_match_wizard(call):
-    uid = call.from_user.id
-    if not is_admin(call.from_user): return
-    if uid not in ADMIN_SESSION: ADMIN_SESSION[uid] = {}
-    action = call.data
-    
-    if action.startswith("ax_shc_"):
-        ADMIN_SESSION[uid]["category_h"] = action.replace("ax_shc_", "")
-        render_home_sub_selection(call.message, uid)
-    elif action.startswith("ax_shs_"):
-        ADMIN_SESSION[uid]["sub_category_h"] = action.replace("ax_shs_", "")
-        render_home_team_selection(call.message, uid) # [تم الإصلاح] تم ربطه بـ render_home_team_selection بدلاً من التكرار الدائري
-    elif action.startswith("ax_sht_"):
-        idx = int(action.replace("ax_sht_", ""))
-        cat = ADMIN_SESSION[uid]["category_h"]
-        sub = ADMIN_SESSION[uid]["sub_category_h"]
-        ADMIN_SESSION[uid]["home_team"] = DATA_BANK[cat][sub][idx]
-        render_away_cat_selection(call.message, uid)
-    elif action.startswith("ax_sac_"):
-        ADMIN_SESSION[uid]["category_a"] = action.replace("ax_sac_", "")
-        render_away_sub_selection(call.message, uid)
-    elif action.startswith("ax_sas_"):
-        ADMIN_SESSION[uid]["sub_category_a"] = action.replace("ax_sas_", "")
-        render_away_team_selection(call.message, uid)
-    elif action.startswith("ax_sat_"):
-        idx = int(action.replace("ax_sat_", ""))
-        cat = ADMIN_SESSION[uid]["category_a"]
-        sub = ADMIN_SESSION[uid]["sub_category_a"]
-        ADMIN_SESSION[uid]["away_team"] = DATA_BANK[cat][sub][idx]
-        render_match_type_selection(call.message, uid)
-    elif action.startswith("ax_st_"):
-        ADMIN_SESSION[uid]["match_type"] = action.replace("ax_st_", "")
-        ADMIN_SESSION[uid]["time"] = datetime.now() + timedelta(hours=2)
-        render_time_adjustment_view(call.message, uid)
+    # 3. فحص حالات جلسات المشرفين (Admin States)
+    if is_admin(message.from_user) and uid in ADMIN_SESSION:
+        state_data = ADMIN_SESSION[uid]
+        state = state_data.get('state')
         
-    elif action == "ax_b_hcat": render_home_cat_selection(call.message, edit=True)
-    elif action == "ax_b_hsub": render_home_sub_selection(call.message, uid)
-    elif action == "ax_b_hteam": render_home_team_selection(call.message, uid)
-    elif action == "ax_b_acat": render_away_cat_selection(call.message, uid)
-    elif action == "ax_b_asub": render_away_sub_selection(call.message, uid)
-    elif action == "ax_b_ateam": render_away_team_selection(call.message, uid)
-    elif action == "ax_b_type": render_match_type_selection(call.message, uid)
+        # معالج جدولة المباريات (Match Wizard Steps)
+        if state == 'wizard_cat_h':
+            if text in DATA_BANK:
+                state_data['cat_h'] = text
+                state_data['state'] = 'wizard_sub_h'
+                markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+                for s in DATA_BANK[text].keys(): markup.add(KeyboardButton(s))
+                markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
+                bot.send_message(message.chat.id, f"📁 اختر الفئة الفرعية / البطولة للمستضيف:", reply_markup=markup)
+            return
+        elif state == 'wizard_sub_h':
+            cat = state_data['cat_h']
+            if text in DATA_BANK.get(cat, {}):
+                state_data['sub_h'] = text
+                state_data['state'] = 'wizard_team_h'
+                markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+                for t in DATA_BANK[cat][text]: markup.add(KeyboardButton(t))
+                markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
+                bot.send_message(message.chat.id, f"🏠 اختر الفريق المستضيف:", reply_markup=markup)
+            return
+        elif state == 'wizard_team_h':
+            cat = state_data['cat_h']
+            sub = state_data['sub_h']
+            if text in DATA_BANK.get(cat, {}).get(sub, []):
+                state_data['home_team'] = text
+                state_data['state'] = 'wizard_cat_a'
+                markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+                for c in DATA_BANK.keys(): markup.add(KeyboardButton(c))
+                markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
+                bot.send_message(message.chat.id, f"🗂️ **[الفريق الثاني - الضيف]** اختر التصنيف الأساسي له:", reply_markup=markup)
+            return
+        elif state == 'wizard_cat_a':
+            if text in DATA_BANK:
+                state_data['cat_a'] = text
+                state_data['state'] = 'wizard_sub_a'
+                markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+                for s in DATA_BANK[text].keys(): markup.add(KeyboardButton(s))
+                markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
+                bot.send_message(message.chat.id, f"📁 اختر الفئة الفرعية / البطولة للضيف:", reply_markup=markup)
+            return
+        elif state == 'wizard_sub_a':
+            cat = state_data['cat_a']
+            if text in DATA_BANK.get(cat, {}):
+                state_data['sub_a'] = text
+                state_data['state'] = 'wizard_team_a'
+                markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+                for t in DATA_BANK[cat][text]:
+                    if t != state_data.get('home_team'): markup.add(KeyboardButton(t))
+                markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
+                bot.send_message(message.chat.id, f"✈️ اختر فريق الضيف من القائمة:", reply_markup=markup)
+            return
+        elif state == 'wizard_team_a':
+            cat = state_data['cat_a']
+            sub = state_data['sub_a']
+            if text in DATA_BANK.get(cat, {}).get(sub, []):
+                state_data['away_team'] = text
+                state_data['state'] = 'wizard_type'
+                markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+                markup.add(KeyboardButton("📋 مباراة دوري عادية"), KeyboardButton("⚔️ خروج مغلوب (ترجيح)"))
+                markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
+                bot.send_message(message.chat.id, f"⚙️ اختر نوع ونظام الفرز المناسب للمباراة:", reply_markup=markup)
+            return
+        elif state == 'wizard_type':
+            if text in ["📋 مباراة دوري عادية", "⚔️ خروج مغلوب (ترجيح)"]:
+                state_data['match_type'] = text
+                state_data['state'] = 'wizard_time'
+                markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+                markup.add(KeyboardButton("⏱️ بعد ساعتين تلقائياً"))
+                markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
+                bot.send_message(message.chat.id, f"📆 أرسل تاريخ ووقت إغلاق التوقعات بالصيغة التالية تماماً:\n`YYYY-MM-DD HH:MM`\nمثال: `2026-07-25 18:30`", reply_markup=markup, parse_mode="Markdown")
+            return
+        elif state == 'wizard_time':
+            process_admin_wizard_time(message)
+            return
+            
+        # معالج إدخال النتيجة الرسمية
+        elif state == 'settling_score':
+            process_admin_settle_score(message)
+            return
+        elif state == 'settling_pen':
+            process_admin_settle_penalties(message)
+            return
+            
+        # معالج إدارة المشتركين
+        elif state == 'users_list':
+            if text == "➡️ تالي المنافسين":
+                show_admin_users_page(message, page=state_data.get('page', 0) + 1)
+                return
+            elif text == "⬅️ سابق المنافسين":
+                show_admin_users_page(message, page=max(0, state_data.get('page', 0) - 1))
+                return
+            user_match = re.match(r'^.* \(ID:(\d+)\)$', text)
+            if user_match:
+                target_uid = int(user_match.group(1))
+                render_single_user_management(message, target_uid)
+                return
+        elif state == 'manage_user':
+            target_uid = state_data['target_uid']
+            if text == "✏️ تعديل اسم هذا المنافس":
+                state_data['state'] = 'edit_user_name'
+                bot.send_message(message.chat.id, "✍️ أرسل الآن الاسم الثلاثي الجديد بالكامل للمنافس:", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("🔙 قائمة المنافسين")))
+                return
+            elif text == "💰 تعديل نقاط هذا المنافس":
+                state_data['state'] = 'edit_user_pts'
+                bot.send_message(message.chat.id, "🔢 أرسل القيمة العددية الإجمالية الجديدة للنقاط:", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("🔙 قائمة المنافسين")))
+                return
+            elif text in ["🚫 تطبيق حظر الحساب", "🟢 إلغاء حظر الحساب"]:
+                conn = get_db()
+                cursor = conn.cursor()
+                cursor.execute("SELECT banned FROM users WHERE user_id=?", (target_uid,))
+                res = cursor.fetchone()
+                if res:
+                    new_ban = 1 if res[0] == 0 else 0
+                    cursor.execute("UPDATE users SET banned=? WHERE user_id=?", (new_ban, target_uid))
+                    conn.commit()
+                    bot.send_message(message.chat.id, "🚫 تم حظر المشترك!" if new_ban==1 else "🟢 تم إلغاء حظر المشترك!")
+                conn.close()
+                render_single_user_management(message, target_uid)
+                return
+            elif text == "🔙 قائمة المنافسين":
+                show_admin_users_page(message, page=state_data.get('page', 0))
+                return
+        elif state == 'edit_user_name':
+            if text == "🔙 قائمة المنافسين":
+                render_single_user_management(message, state_data['target_uid'])
+                return
+            if len(text.split()) < 3:
+                bot.send_message(message.chat.id, "❌ يرجى كتابة اسم ثلاثي صحيح:")
+                return
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET full_name=? WHERE user_id=?", (text, state_data['target_uid']))
+            conn.commit()
+            conn.close()
+            bot.send_message(message.chat.id, "✅ تم تحديث اسم المنافس بنجاح.")
+            render_single_user_management(message, state_data['target_uid'])
+            return
+        elif state == 'edit_user_pts':
+            if text == "🔙 قائمة المنافسين":
+                render_single_user_management(message, state_data['target_uid'])
+                return
+            if not text.isdigit() and not (text.startswith('-') and text[1:].isdigit()):
+                bot.send_message(message.chat.id, "❌ أرسل قيمة رقمية فقط:")
+                return
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET points=? WHERE user_id=?", (int(text), state_data['target_uid']))
+            conn.commit()
+            conn.close()
+            bot.send_message(message.chat.id, "✅ تم تعديل رصيد النقاط بنجاح.")
+            render_single_user_management(message, state_data['target_uid'])
+            return
 
-def adjust_match_time(call):
-    admin_id = call.from_user.id
-    if not is_admin(call.from_user): return
-    action = call.data
-    
-    if action == "at_p1d": ADMIN_SESSION[admin_id]["time"] += timedelta(days=1)
-    elif action == "at_m1d": ADMIN_SESSION[admin_id]["time"] -= timedelta(days=1)
-    elif action == "at_p1h": ADMIN_SESSION[admin_id]["time"] += timedelta(hours=1)
-    elif action == "at_m1h": ADMIN_SESSION[admin_id]["time"] -= timedelta(hours=1)
-    elif action == "at_p15m": ADMIN_SESSION[admin_id]["time"] += timedelta(minutes=15)
-    elif action == "at_m15m": ADMIN_SESSION[admin_id]["time"] -= timedelta(minutes=15)
-    elif action == "at_p1m": ADMIN_SESSION[admin_id]["time"] += timedelta(minutes=1)
-    elif action == "at_m1m": ADMIN_SESSION[admin_id]["time"] -= timedelta(minutes=1)
-    elif action == "at_confirm":
-        data = ADMIN_SESSION[admin_id]
-        time_str = data["time"].strftime("%Y-%m-%d %H:%M")
+        # معالج إضافة بطولة جديدة
+        elif state == 'add_tour_cat':
+            if text in ["🏆 الدوريات والأندية", "🌍 القارات والمنتخبات"]:
+                state_data['t_category'] = "الدوريات" if "الدوريات" in text else "القارات"
+                state_data['state'] = 'add_tour_name'
+                bot.send_message(message.chat.id, "✍️ أرسل اسم البطولة الجديدة (مثال: دوري أبطال آسيا):", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("🔙 العودة للوحة التحكم")))
+            return
+        elif state == 'add_tour_name':
+            state_data['t_name'] = text
+            state_data['state'] = 'add_tour_teams'
+            bot.send_message(message.chat.id, "📋 أرسل أسماء الفرق التابعة لها، بحيث يكون كل فريق في **سطر منفصل**:", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("🔙 العودة للوحة التحكم")))
+            return
+        elif state == 'add_tour_teams':
+            teams = [t.strip() for t in re.split(r'[\n,]+', text) if t.strip()]
+            if not teams:
+                bot.send_message(message.chat.id, "❌ الرجاء إدخال فرق صحيحة:")
+                return
+            cat = state_data['t_category']
+            tour_name = state_data['t_name']
+            conn = get_db()
+            cursor = conn.cursor()
+            for team in teams:
+                cursor.execute("INSERT INTO dynamic_teams (category, tournament_name, team_name) VALUES (?, ?, ?)", (cat, tour_name, team))
+            conn.commit()
+            conn.close()
+            load_dynamic_tournaments()
+            bot.send_message(message.chat.id, f"🏆 تم حفظ البطولة [{tour_name}] بنجاح مع {len(teams)} فريق!")
+            show_admin_panel(message)
+            return
+
+        # معالج التعديلات على البنك والهيكل (CRUD Database)
+        elif state == 'db_manage_cat':
+            if text in ["🗂️ تصنيف: الدوريات والأندية", "🗂️ تصنيف: القارات والمنتخبات"]:
+                cat_key = "الدوريات" if "الدوريات" in text else "القارات"
+                state_data['cat'] = cat_key
+                state_data['state'] = 'db_manage_tour'
+                load_dynamic_tournaments()
+                markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+                for tour in DATA_BANK.get(cat_key, {}).keys():
+                    markup.add(KeyboardButton(f"🏆 بطولة: {tour}"))
+                markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
+                bot.send_message(message.chat.id, f"💼 تصفح مسابقات قسم [{cat_key}] ➖ اختر بطولة لإدارتها:", reply_markup=markup)
+            return
+        elif state == 'db_manage_tour':
+            cat_key = state_data['cat']
+            tour_match = re.match(r'^🏆 بطولة: (.*)$', text)
+            if tour_match:
+                tour_name = tour_match.group(1)
+                state_data['tour'] = tour_name
+                state_data['state'] = 'db_tour_ops'
+                markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+                markup.add(KeyboardButton("✏️ تعديل اسم البطولة"), KeyboardButton("🗑️ حذف البطولة بالكامل"))
+                markup.add(KeyboardButton("👟 إدارة فرق البطولة"), KeyboardButton("➕ إضافة فريق جديد للبطولة"))
+                markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
+                bot.send_message(message.chat.id, f"🏆 **إدارة مسار البطولة:** {tour_name}\nاختر الإجراء المطلوب:", reply_markup=markup)
+            return
+        elif state == 'db_tour_ops':
+            tour_name = state_data['tour']
+            cat_key = state_data['cat']
+            if text == "✏️ تعديل اسم البطولة":
+                state_data['state'] = 'db_rename_tour'
+                bot.send_message(message.chat.id, f"✍️ أرسل الآن الاسم الجديد البديل لبطولة *{escape_markdown(tour_name)}*:", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("🔙 العودة للوحة التحكم")))
+                return
+            elif text == "🗑️ حذف البطولة بالكامل":
+                conn = get_db()
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM dynamic_teams WHERE category=? AND tournament_name=?", (cat_key, tour_name))
+                cursor.execute("INSERT OR REPLACE INTO tournament_mods (category, old_name, new_name, status) VALUES (?, ?, ?, 'DELETED')", (cat_key, tour_name, ''))
+                conn.commit()
+                conn.close()
+                load_dynamic_tournaments()
+                bot.send_message(message.chat.id, "🗑️ تم مسح وإلغاء البطولة بالكامل من النظام.")
+                show_admin_panel(message)
+                return
+            elif text == "➕ إضافة فريق جديد للبطولة":
+                state_data['state'] = 'db_add_team_name'
+                bot.send_message(message.chat.id, f"⚽ أرسل اسم الفريق الجديد لضمه إلى بطولة {tour_name}:", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("🔙 العودة للوحة التحكم")))
+                return
+            elif text == "👟 إدارة فرق البطولة":
+                state_data['state'] = 'db_manage_teams_list'
+                load_dynamic_tournaments()
+                teams_list = DATA_BANK.get(cat_key, {}).get(tour_name, [])
+                if not teams_list:
+                    bot.send_message(message.chat.id, "📭 لا توجد فرق في هذه البطولة حالياً.")
+                    return
+                markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+                for tm in teams_list: markup.add(KeyboardButton(f"⚽ فريق: {tm}"))
+                markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
+                bot.send_message(message.chat.id, f"💡 قائمة فرق [{tour_name}] ➖ اختر فريقاً لإدارته أو حذفه:", reply_markup=markup)
+                return
+        elif state == 'db_rename_tour':
+            cat_key = state_data['cat']
+            old_name = state_data['tour']
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("UPDATE dynamic_teams SET tournament_name=? WHERE category=? AND tournament_name=?", (text, cat_key, old_name))
+            cursor.execute("INSERT OR REPLACE INTO tournament_mods (category, old_name, new_name, status) VALUES (?, ?, ?, 'ACTIVE')", (cat_key, old_name, text))
+            cursor.execute("UPDATE team_mods SET tournament=? WHERE category=? AND tournament=?", (text, cat_key, old_name))
+            conn.commit()
+            conn.close()
+            load_dynamic_tournaments()
+            bot.send_message(message.chat.id, "✅ تم حفظ التعديل بنجاح لمسمى البطولة.")
+            show_admin_panel(message)
+            return
+        elif state == 'db_add_team_name':
+            cat_key = state_data['cat']
+            tour_name = state_data['tour']
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO dynamic_teams (category, tournament_name, team_name) VALUES (?, ?, ?)", (cat_key, tour_name, text))
+            conn.commit()
+            conn.close()
+            load_dynamic_tournaments()
+            bot.send_message(message.chat.id, f"✅ تم إضافة الفريق [{text}] وتثبيته في البنك.")
+            show_admin_panel(message)
+            return
+        elif state == 'db_manage_teams_list':
+            team_match = re.match(r'^⚽ فريق: (.*)$', text)
+            if team_match:
+                state_data['team'] = team_match.group(1)
+                state_data['state'] = 'db_team_ops'
+                markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+                markup.add(KeyboardButton("✏️ تعديل اسم الفريق"), KeyboardButton("🗑️ حذف الفريق من البطولة"))
+                markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
+                bot.send_message(message.chat.id, f"⚽ **خيارات الكيان:** {state_data['team']}\nاختر الإجراء:", reply_markup=markup)
+            return
+        elif state == 'db_team_ops':
+            cat_key = state_data['cat']
+            tour_name = state_data['tour']
+            team_name = state_data['team']
+            if text == "✏️ تعديل اسم الفريق":
+                state_data['state'] = 'db_rename_team'
+                bot.send_message(message.chat.id, f"✍️ أرسل المسمى البديل الجديد للفريق *{escape_markdown(team_name)}*:", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("🔙 العودة للوحة التحكم")))
+                return
+            elif text == "🗑️ حذف الفريق من البطولة":
+                conn = get_db()
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM dynamic_teams WHERE category=? AND tournament_name=? AND team_name=?", (cat_key, tour_name, team_name))
+                cursor.execute("INSERT OR REPLACE INTO team_mods (category, tournament, old_name, new_name, status) VALUES (?, ?, ?, '', 'DELETED')", (cat_key, tour_name, team_name))
+                conn.commit()
+                conn.close()
+                load_dynamic_tournaments()
+                bot.send_message(message.chat.id, "🗑️ تم سحب الفريق بنجاح من مسار المسابقة.")
+                show_admin_panel(message)
+                return
+        elif state == 'db_rename_team':
+            cat_key = state_data['cat']
+            tour_name = state_data['tour']
+            old_team = state_data['team']
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("UPDATE dynamic_teams SET team_name=? WHERE category=? AND tournament_name=? AND team_name=?", (text, cat_key, tour_name, old_team))
+            cursor.execute("INSERT OR REPLACE INTO team_mods (category, tournament, old_name, new_name, status) VALUES (?, ?, ?, ?, 'ACTIVE')", (cat_key, tour_name, old_team, text))
+            conn.commit()
+            conn.close()
+            load_dynamic_tournaments()
+            bot.send_message(message.chat.id, "✅ تم تغيير اسم الفريق بنجاح.")
+            show_admin_panel(message)
+            return
+
+    # 4. معالجة القوائم الرئيسية وأزرار التوجيه المكتوبة
+    if text == "🗳️ التوقعات المتاحة":
+        show_available_matches(message)
+    elif text == "📊 جدول الترتيب العام":
+        show_standings_page(message, page=0)
+    elif text == "🏆 مبارياتي الرابحة":
+        show_winning_matches(message)
+    elif text == "ℹ️ معلومات حسابي":
+        show_my_info(message)
+    elif text == "⚙️ لوحة تحكم المشرف" and is_admin(message.from_user):
+        show_admin_panel(message)
         
-        cat_str = data['category_h'] if data['category_h'] == data['category_a'] else f"{data['category_h']} - {data['category_a']}"
-        sub_cat_str = data['sub_category_h'] if data['sub_category_h'] == data['sub_category_a'] else f"{data['sub_category_h']} × {data['sub_category_a']}"
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO matches (category, sub_category, home_team, away_team, match_type, start_time) VALUES (?, ?, ?, ?, ?, ?)",
-                       (cat_str, sub_cat_str, data['home_team'], data['away_team'], data['match_type'], time_str))
-        conn.commit()
-        conn.close()
-        bot.edit_message_text(f"🚀 **تمت الجدولة والنشر بنجاح!**\nالمباراة: {data['home_team']} × {data['away_team']}\n⏱️ وقت الإغلاق: {time_str}", call.message.chat.id, call.message.message_id)
-        ADMIN_SESSION.pop(admin_id, None)
+    # خيارات المشرف
+    elif is_admin(message.from_user):
+        if text == "➕ إضافة وجدولة مباراة جديدة":
+            ADMIN_SESSION[uid] = {'state': 'wizard_cat_h'}
+            markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+            for c in DATA_BANK.keys(): markup.add(KeyboardButton(c))
+            markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
+            bot.send_message(message.chat.id, "🗂️ **[الفريق الأول - المستضيف]** اختر التصنيف الأساسي له:", reply_markup=markup)
+        elif text == "🏆 إضافة بطولة جديدة ✨":
+            ADMIN_SESSION[uid] = {'state': 'add_tour_cat'}
+            markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+            markup.add(KeyboardButton("🏆 الدوريات والأندية"), KeyboardButton("🌍 القارات والمنتخبات"))
+            markup.add(KeyboardButton("🔙 العودة للوحة التحكم"))
+            bot.send_message(message.chat.id, "🗂️ اختر التصنيف المعتمد لتسجيل البطولة الجديدة:", reply_markup=markup)
+        elif text == "🛠️ إدارة وحذف وتعديل البطولات والفرق":
+            admin_manage_db_categories_text(message)
+        elif text == "🏁 رصد نتيجة رسمية وحساب النقاط":
+            admin_settle_list_text(message)
+        elif text == "🗑️ حذف مباراة مرسلة بالكامل":
+            admin_delete_list_text(message)
+        elif text == "👥 إدارة المنافسين والتحكم بالحسابات":
+            show_admin_users_page(message, page=0)
+        elif text == "📢 إذاعة رسالة للمشتركين (Broadcast)":
+            msg = bot.send_message(message.chat.id, "📢 أرسل الآن نص الرسالة المراد إذاعتها لجميع المشتركين:", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("🔙 العودة للوحة التحكم")))
+            bot.register_next_step_handler(msg, process_broadcast)
+        elif text == "💾 تحميل نسخة احتياطية للبيانات (Backup)":
+            try:
+                with open("contest_master.db", "rb") as db_file:
+                    db_data = db_file.read()
+                bio = BytesIO(db_data)
+                bio.name = f"backup_{datetime.now().strftime('%Y_%m_%d_%H%M%S')}.db"
+                bot.send_document(message.chat.id, bio, caption="💾 نسخة احتياطية لقاعدة البيانات لجميع المشتركين.")
+            except Exception as e:
+                bot.send_message(message.chat.id, f"❌ حدث خطأ:\n`{str(e)}`")
+            show_admin_panel(message)
+
+    # 5. الالتقاط الذكي للمباريات المحددة عبر الأزرار
+    match_pred = re.match(r'^⚽ .* \(ID:(\d+)\)$', text)
+    if match_pred:
+        user_prediction_flow_init(message, int(match_pred.group(1)))
         return
-    render_time_adjustment_view(call.message, admin_id)
-
-# ==========================================
-# 🏁 رصد نتائج المباريات الرسمية وحساب النقاط المعقد
-# ==========================================
-def admin_settle_interface(call):
-    if not is_admin(call.from_user): return
-    parts = call.data.split("_")
-    match_id = int(parts[2])
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT home_team, away_team, match_type FROM matches WHERE match_id=?", (match_id,))
-    match = cursor.fetchone()
-    conn.close()
-    
-    ADMIN_SESSION[call.from_user.id] = {"match_id": match_id, "hp": 0, "ap": 0, "php": 0, "pap": 0, "type": match[2], "home": match[0], "away": match[1]}
-    render_admin_settle_keyboard(call.message, call.from_user.id)
-
-def render_admin_settle_keyboard(message, admin_id):
-    data = ADMIN_SESSION[admin_id]
-    markup = InlineKeyboardMarkup()
-    markup.row(
-        InlineKeyboardButton(f"➕ {data['home']}", callback_data="s_inc_h"),
-        InlineKeyboardButton(f"🏁 {data['hp']} - {data['ap']} 🏁", callback_data="none"),
-        InlineKeyboardButton(f"➕ {data['away']}", callback_data="s_inc_a")
-    )
-    markup.row(
-        InlineKeyboardButton(f"➖ {data['home']}", callback_data="s_dec_h"),
-        InlineKeyboardButton(" ", callback_data="none"),
-        InlineKeyboardButton(f"➖ {data['away']}", callback_data="s_dec_a")
-    )
-    
-    if data['type'] == "خروج مغلوب (ترجيح)" and data['hp'] == data['ap']:
-        markup.row(InlineKeyboardButton("🥅 ركلات الترجيح الرسمية 🥅", callback_data="none"))
-        markup.row(
-            InlineKeyboardButton(f"➕ ركلات {data['home']}", callback_data="s_inc_ph"),
-            InlineKeyboardButton(f"🎯 {data['php']} - {data['pap']} 🎯", callback_data="none"),
-            InlineKeyboardButton(f"➕ ركلات {data['away']}", callback_data="s_inc_pa")
-        )
-        markup.row(
-            InlineKeyboardButton(f"➖ {data['home']}", callback_data="s_dec_ph"),
-            InlineKeyboardButton(" ", callback_data="none"),
-            InlineKeyboardButton(f"➖ {data['away']}", callback_data="s_dec_pa")
-        )
-    markup.row(InlineKeyboardButton("🏁 اعتماد النتيجة وضخ النقاط 🚀", callback_data="s_finalize"))
-    bot.edit_message_text(f"⚽ **إدخال النتيجة الرسمية:**\n🏟️ {data['home']} × {data['away']}\nاستخدم الأزرار لتحديد النتيجة الحقيقية:", message.chat.id, message.message_id, reply_markup=markup)
-
-def process_admin_settle_adjustments(call):
-    if not is_admin(call.from_user): return
-    admin_id = call.from_user.id
-    action = call.data
-    data = ADMIN_SESSION[admin_id]
-    
-    if action == "s_inc_h": data['hp'] += 1
-    elif action == "s_dec_h" and data['hp'] > 0: data['hp'] -= 1
-    elif action == "s_inc_a": data['ap'] += 1
-    elif action == "s_dec_a" and data['ap'] > 0: data['ap'] -= 1
-    elif action == "s_inc_ph": data['php'] += 1
-    elif action == "s_dec_ph" and data['php'] > 0: data['php'] -= 1
-    elif action == "s_inc_pa": data['pap'] += 1
-    elif action == "s_dec_pa" and data['pap'] > 0: data['pap'] -= 1
-    elif action == "s_finalize":
-        match_id = data['match_id']
-        real_home_score = data['hp']
-        real_away_score = data['ap']
         
-        real_pen_home = data['php'] if real_home_score == real_away_score else 0
-        real_pen_away = data['pap'] if real_home_score == real_away_score else 0
-        
-        real_outcome = "HOME" if real_home_score > real_away_score else "AWAY" if real_away_score > real_home_score else "DRAW"
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT p.user_id, u.full_name, p.home_pred, p.away_pred, p.pen_home_pred, p.pen_away_pred 
-            FROM predictions p 
-            LEFT JOIN users u ON p.user_id = u.user_id 
-            WHERE p.match_id=?
-        """, (match_id,))
-        predictions = cursor.fetchall()
-        
-        report_lines = []
-        
-        for p in predictions:
-            u_id, full_name, u_hp, u_ap, u_php, u_pap = p
-            full_name = full_name if full_name else "مستخدم غير مسجل"
-            calculated_points = 0
-            u_outcome = "HOME" if u_hp > u_ap else "AWAY" if u_ap > u_hp else "DRAW"
-            
-            exact_match_score = False
-            if u_outcome == real_outcome:
-                calculated_points += 5
-                if u_hp == real_home_score and u_ap == real_away_score:
-                    calculated_points += 15
-                    exact_match_score = True
-            
-            if data['type'] == "خروج مغلوب (ترجيح)" and real_outcome == "DRAW":
-                real_pen_winner = "HOME" if real_pen_home > real_pen_away else "AWAY"
-                u_pen_winner = "HOME" if u_php > u_pap else "AWAY"
-                exact_pen_score = False
-                
-                if u_pen_winner == real_pen_winner:
-                    calculated_points += 10
-                    if u_php == real_pen_home and u_pap == real_pen_away:
-                        calculated_points += 15
-                        exact_pen_score = True
-                if exact_match_score and exact_pen_score:
-                    calculated_points += 30
-                    
-            cursor.execute("UPDATE users SET points = points + ? WHERE user_id = ?", (calculated_points, u_id))
-            
-            pred_str = f"[{u_hp} - {u_ap}]"
-            if data['type'] == "خروج مغلوب (ترجيح)" and u_outcome == "DRAW":
-                pred_str += f" (ترجيح: {u_php}-{u_pap})"
-            
-            safe_report_name = escape_markdown(full_name)
-            report_lines.append(f"👤 {safe_report_name} ➖ توقع: `{pred_str}` ➖ كسب: *+{calculated_points}* ن")
-            
-        cursor.execute("UPDATE matches SET status='FINISHED', home_score=?, away_score=?, pen_home_score=?, pen_away_score=? WHERE match_id=?", 
-                       (real_home_score, real_away_score, real_pen_home, real_pen_away, match_id))
-        conn.commit()
-        conn.close()
-        
-        bot.edit_message_text("🎉 **تم حسم ورصد المباراة بنجاح وتحديث أرصدة المتسابقين تلقائياً!**", call.message.chat.id, call.message.message_id)
-        
-        score_str = f"[{real_home_score} - {real_away_score}]"
-        if data['type'] == "خروج مغلوب (ترجيح)" and real_outcome == "DRAW":
-            score_str += f" (ركلات ترجيح: {real_pen_home}-{real_pen_away})"
-            
-        report_header = f"📊 **تقرير الفرز للمباراة:**\n⚽ {data['home']} × {data['away']}\n🏁 النتيجة الرسمية: `{score_str}`\n───────────────────\n"
-        
-        if not report_lines:
-            bot.send_message(call.message.chat.id, report_header + "📭 لم يقم أي منافس بتوقع هذه المباراة.")
-        else:
-            current_msg = report_header
-            for line in report_lines:
-                if len(current_msg) + len(line) + 2 > 4000:
-                    bot.send_message(call.message.chat.id, current_msg, parse_mode="Markdown")
-                    current_msg = "📊 **تابع تقرير التوقعات:**\n───────────────────\n"
-                current_msg += line + "\n"
-            if current_msg:
-                bot.send_message(call.message.chat.id, current_msg, parse_mode="Markdown")
-                
-        ADMIN_SESSION.pop(admin_id, None)
+    match_settle = re.match(r'^🏁 رصد: .* \(ID:(\d+)\)$', text)
+    if match_settle and is_admin(message.from_user):
+        admin_settle_flow_init(message, int(match_settle.group(1)))
         return
-    render_admin_settle_keyboard(call.message, admin_id)
-
-# ==========================================
-# 🗑️ مسح وإلغاء المباريات
-# ==========================================
-def delete_match_completely(call):
-    if not is_admin(call.from_user): return
-    match_id = int(call.data.split("_")[2])
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM matches WHERE match_id=?", (match_id,))
-    cursor.execute("DELETE FROM predictions WHERE match_id=?", (match_id,))
-    conn.commit()
-    conn.close()
-    bot.edit_message_text("🗑️ **تم حذف المباراة وكافة توقعاتها المرتبطة بها نهائياً من النظام.**", call.message.chat.id, call.message.message_id)
-
-# ==========================================
-# 🛑 البوابة الذكية الموحدة لمعالجة ضغطات الأزرار (Master Callback Router)
-# ==========================================
-@bot.callback_query_handler(func=lambda call: True)
-def master_callback_handler(call):
-    try:
-        bot.answer_callback_query(call.id)
-    except Exception as e:
-        print(f"⚠️ تعذر إرسال تأكيد callback_query: {e}")
-
-    data = call.data
-    if not data or data == "none":
+        
+    match_del = re.match(r'^🗑️ حذف: .* \(ID:(\d+)\)$', text)
+    if match_del and is_admin(message.from_user):
+        delete_match_completely(message, int(match_del.group(1)))
         return
-    
-    try:
-        if data.startswith("usr_pred_"):
-            user_prediction_interface(call)
-        elif data.startswith("u_"):
-            handle_user_adjustments(call)
-        elif data.startswith("std_page_"):
-            handle_standings_pagination(call)
-        elif data == "adm_main_panel":
-            return_to_admin_panel_callback(call)
-        elif data.startswith("adm_"):
-            handle_admin_actions(call)
-        elif data.startswith("au_"):
-            handle_user_management_callbacks(call)
-        elif data.startswith("mdb_cat_"):
-            admin_manage_db_tournaments(call)
-        elif data.startswith("mdb_addtour_"):
-            admin_add_tour_from_manage(call)
-        elif data.startswith("mdb_tr_"):
-            admin_manage_single_tournament(call)
-        elif data.startswith("mdbt_del_"):
-            admin_delete_tournament(call)
-        elif data.startswith("mdbt_edit_"):
-            admin_edit_tournament_prompt(call)
-        elif data.startswith("mdbt_addteam_"):
-            admin_add_team_prompt(call)
-        elif data.startswith("mdbt_teams_"):
-            admin_manage_teams_page(call)
-        elif data.startswith("mdbm_tm_"):
-            admin_single_team_actions(call)
-        elif data.startswith("mdbtm_del_"):
-            admin_delete_single_team(call)
-        elif data.startswith("mdbtm_edit_"):
-            admin_edit_team_prompt(call)
-        elif data.startswith("t_cat_"):
-            handle_tournament_category(call)
-        elif data.startswith("ax_"):
-            build_match_wizard(call)
-        elif data.startswith("at_"):
-            adjust_match_time(call)
-        elif data.startswith("as_"):
-            admin_settle_interface(call)
-        elif data.startswith("s_"):
-            process_admin_settle_adjustments(call)
-        elif data.startswith("ad_del_"):
-            delete_match_completely(call)
-            
-    except Exception as e:
-        print(f"⚠️ خطأ غير متوقع أثناء توجيه ضغطة الزر: {e}")
 
 # ==========================================
 # 🌐 إعدادات الـ Webhook لـ PythonAnywhere
@@ -1550,9 +1220,5 @@ def webhook():
         abort(403)
 
 if __name__ == "__main__":
-    # تنويه: إذا كنت تريد استخدام Polling محلياً بدلاً من الـ Webhook لتجربته على حاسوبك الشخصي:
-    # قم بإلغاء تعليق السطر بالأسفل وعمل تعليق لسطر app.run:
-    # bot.infinity_polling(skip_pending=True)
-    
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
