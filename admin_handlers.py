@@ -13,11 +13,23 @@ logger = logging.getLogger(__name__)
 
 
 def is_admin(user_id: int, db_session=None) -> bool:
-    if user_id in Config.ADMIN_IDS:
+    """التحقق من صلاحيات المشرف بمرونة عالية من البيئة وقاعدة البيانات"""
+    raw_admin_ids = getattr(Config, 'ADMIN_IDS', [])
+    admin_ids = []
+
+    # معالجة القائمة سواء كانت نصاً مفصولاً بفواصل أو قائمة أرقام
+    if isinstance(raw_admin_ids, str):
+        admin_ids = [int(x.strip()) for x in raw_admin_ids.split(",") if x.strip().isdigit()]
+    elif isinstance(raw_admin_ids, (list, set, tuple)):
+        admin_ids = [int(x) for x in raw_admin_ids if str(x).isdigit()]
+
+    if user_id in admin_ids:
         return True
+
     if db_session:
         user = db_session.query(User).filter(User.id == user_id).first()
-        return user.is_admin if user else False
+        return bool(user and user.is_admin)
+
     return False
 
 
@@ -93,7 +105,7 @@ async def admin_users_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         text = "👥 <b>أحدث 10 مستخدمين مسجلين:</b>\n\n"
         for u in latest_users:
             status = "🚫 محظور" if u.is_blocked else "✅ نشط"
-            role = "👑 مشرف" if u.is_admin or u.id in Config.ADMIN_IDS else "👤 مشترك"
-            text += f"• <b>{u.full_name}</b> (<code>{u.id}</code>) | {role} | {status}\n"
+            role = "👑 مشرف" if is_admin(u.id, db) else "👤 مشترك"
+            text += f"• <b>{u.full_name or 'بدون اسم'}</b> (<code>{u.id}</code>) | {role} | {status}\n"
 
         await update.message.reply_text(text, parse_mode="HTML")
