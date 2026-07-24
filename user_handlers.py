@@ -12,22 +12,35 @@ from admin_handlers import is_admin
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------
+# لوحات المفاتيح (فصل لوحة المنافس عن لوحة المشرف)
+# ---------------------------------------------------------
 
 def get_main_keyboard(is_admin_user: bool = False):
+    """لوحة أزرار المنافس (المستخدم)"""
     keyboard = [
         [KeyboardButton("⚽ مباريات اليوم والتوقعات"), KeyboardButton("🔴 المباريات المباشرة")],
-        [KeyboardButton("📊 رصيدي وتوقعاتي"), KeyboardButton("🏆 جدول الترتيب")],
-        [KeyboardButton("🔄 تحديث البيانات")]
+        [KeyboardButton("📊 رصيدي وتوقعاتي"), KeyboardButton("🏆 جدول الترتيب")]
     ]
-    # إضافة صلاحيات المشرف في الأزرار الرئيسية مباشرة
+    # إظهار زر الانتقال للوحة المشرف إذا كان الحساب مشرفاً
     if is_admin_user:
-        keyboard.append([KeyboardButton("➕ إضافة مباراة يدويًا"), KeyboardButton("📝 رصد نتيجة مباراة")])
-        keyboard.append([KeyboardButton("📊 إحصائيات النظام"), KeyboardButton("👥 إدارة المستخدمين")])
+        keyboard.append([KeyboardButton("🛠️ لوحة تحكم المشرف")])
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+def get_admin_keyboard():
+    """لوحة أزرار المشرف المنفصلة بالكامل"""
+    keyboard = [
+        [KeyboardButton("➕ إضافة مباراة يدويًا"), KeyboardButton("📝 رصد نتيجة مباراة")],
+        [KeyboardButton("📊 إحصائيات النظام"), KeyboardButton("👥 إدارة المستخدمين")],
+        [KeyboardButton("🔄 تحديث البيانات"), KeyboardButton("⚡ مزامنة وتقييم آلي")],
+        [KeyboardButton("⬅️ القائمة الرئيسية")]
+    ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
 def build_prediction_keyboard(match_id: int, home_score: int, away_score: int):
-    """إنشاء أزرار + و - التفاعلية لتوقع النتيجة"""
+    """أزرار + و - التفاعلية لتوقع النتيجة"""
     keyboard = [
         [InlineKeyboardButton(f"🏠 المستضيف: {home_score}", callback_data="ignore")],
         [
@@ -90,7 +103,6 @@ async def todays_matches_handler(update: Update, context: ContextTypes.DEFAULT_T
 
         matches = db.query(Match).filter(Match.is_evaluated == False).all()
         if not matches:
-            # محاولة المزامنة إذا كانت القاعدة فارغة
             matches = bank.sync_todays_matches()
 
         if not matches:
@@ -98,7 +110,6 @@ async def todays_matches_handler(update: Update, context: ContextTypes.DEFAULT_T
             return
 
         for match in matches:
-            # التحقق من وجود توقع سابق للمستخدم
             user_pred = db.query(Prediction).filter(
                 Prediction.user_id == user_id,
                 Prediction.match_id == match.id
@@ -134,7 +145,6 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer()
         return
 
-    # بدء عملية التوقع أو التعديل
     if data.startswith("start_pred_"):
         match_id = int(data.split("_")[2])
         with get_db() as db:
@@ -155,10 +165,9 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             await query.edit_message_text(text, parse_mode="HTML", reply_markup=build_prediction_keyboard(match_id, h_score, a_score))
         return
 
-    # التفاعل مع أزرار الزيادة والنقصان
     if data.startswith("pred_"):
         parts = data.split("_")
-        action = parts[1] # h_up, h_dn, a_up, a_dn, save
+        action = parts[1]
         match_id = int(parts[2])
         h_score = int(parts[3])
         a_score = int(parts[4])
@@ -186,7 +195,6 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             await query.edit_message_text(f"✅ <b>تم حفظ توقعك بنجاح!</b>\nالنتيجة المتوقعة: ({match.home_team} {h_score} - {a_score} {match.away_team})", parse_mode="HTML")
             return
 
-        # تحديث الأزرار بالقيم الجديدة
         await query.edit_message_reply_markup(reply_markup=build_prediction_keyboard(match_id, h_score, a_score))
 
 
@@ -258,5 +266,10 @@ async def leaderboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def refresh_data_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    with get_db() as db:
+        if not is_admin(user_id, db):
+            await update.message.reply_text("❌ هذه الصلاحية للمشرفين فقط.")
+            return
     bank.sync_todays_matches()
     await update.message.reply_text("✅ تم تحديث البيانات بنجاح!")
