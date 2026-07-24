@@ -57,6 +57,7 @@ class FootballDataBank:
                 params = {"dateFrom": target_date, "dateTo": target_date}
                 response = requests.get(url, headers=self.headers, params=params, timeout=10)
                 if response.status_code != 200:
+                    logger.error(f"فشل جلب المباريات: رمز الحالة {response.status_code} - {response.text}")
                     return []
                 data = response.json()
                 fixtures = data.get("matches", [])
@@ -116,11 +117,30 @@ class FootballDataBank:
                 for item in fixtures:
                     match = db.query(Match).filter(Match.api_match_id == item.get("id")).first()
                     if match:
-                        score_data = item.get("score", {}) .get("fullTime", {})
+                        score_data = item.get("score", {}).get("fullTime", {})
                         match.status = self._map_status(item.get("status"))
                         match.home_score = score_data.get("home")
                         match.away_score = score_data.get("away")
         except Exception as e:
             logger.error(f"خطأ التحديث المباشر: {e}")
 
+
 bank = FootballDataBank()
+
+
+# ---------------------------------------------------------
+# دالة اختبار وفحص طلبات الـ API مباشرة
+# ---------------------------------------------------------
+def test_api_request():
+    url = f"{Config.FOOTBALL_API_URL}/matches"
+    headers = {'X-Auth-Token': getattr(Config, 'FOOTBALL_API_KEY', '')}
+    
+    try:
+        logger.info(f"جاري إرسال طلب تجريبي إلى: {url}")
+        response = requests.get(url, headers=headers, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        print(f"Response Body: {response.text}")
+        return response
+    except Exception as e:
+        print(f"Connection Error: {e}")
+        return None
