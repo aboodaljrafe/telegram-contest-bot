@@ -1,19 +1,18 @@
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes
 
 from config import Config
-from database.connection import get_db
-from database.models import User, Match, Prediction
-from services.bank import bank
-from services.scoring import evaluate_all_finished_matches
+from connection import get_db
+from models import User, Match, Prediction
+from bank import bank
+from scoring import evaluate_all_finished_matches
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 def is_admin(user_id: int, db_session=None) -> bool:
-    """التحقق مما إذا كان المستخدم مشرفاً إما عبر قائمة ADMIN_IDS أو قاعدة البيانات"""
     if user_id in Config.ADMIN_IDS:
         return True
     if db_session:
@@ -23,7 +22,6 @@ def is_admin(user_id: int, db_session=None) -> bool:
 
 
 def get_admin_keyboard():
-    """لوحة أزرار التحكم الخاصة بالمشرفين"""
     keyboard = [
         [KeyboardButton("📊 إحصائيات النظام"), KeyboardButton("⚡ مزامنة وتقييم آلي")],
         [KeyboardButton("👥 إدارة المستخدمين"), KeyboardButton("⬅️ القائمة الرئيسية")]
@@ -32,9 +30,7 @@ def get_admin_keyboard():
 
 
 async def admin_panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """الدخول للوحة تحكم المشرفين عبر الأمر /admin أو الأزرار"""
     user_id = update.effective_user.id
-
     with get_db() as db:
         if not is_admin(user_id, db):
             await update.message.reply_text("❌ عذراً، لا تملك صلاحيات الوصول للوحة المشرفين.")
@@ -49,9 +45,7 @@ async def admin_panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def system_stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض إحصائيات شاملة عن البوت وقاعدة البيانات"""
     user_id = update.effective_user.id
-
     with get_db() as db:
         if not is_admin(user_id, db):
             return
@@ -72,33 +66,24 @@ async def system_stats_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def force_sync_and_eval_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تنفيذ جلب المباريات وتحديث النتائج وتقييم التوقعات يدوياً وفورياً"""
     user_id = update.effective_user.id
-
     with get_db() as db:
         if not is_admin(user_id, db):
             return
 
     msg = await update.message.reply_text("⏳ جاري المزامنة مع خادم المباريات وتقييم التوقعات...")
-
     try:
-        # 1. مزامنة المباريات اليومية والمباشرة
         bank.sync_todays_matches()
         bank.sync_live_matches()
-
-        # 2. تقييم المباريات المنتهية واحتساب النقاط
         evaluate_all_finished_matches()
-
         await msg.edit_text("✅ تمت المزامنة واحتساب نقاط كافة المباريات المنتهية بنجاح!")
     except Exception as e:
-        logger.error(f"خطأ أثناء المزامنة اليدوية للمشرف: {e}")
+        logger.error(f"خطأ المزامنة اليدوية: {e}")
         await msg.edit_text(f"❌ حدث خطأ أثناء المزامنة: {e}")
 
 
 async def admin_users_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض قائمة سريعة بأحدث المشتركين وسجلاتهم"""
     user_id = update.effective_user.id
-
     with get_db() as db:
         if not is_admin(user_id, db):
             return
