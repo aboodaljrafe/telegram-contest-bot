@@ -2,7 +2,6 @@ import logging
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
-# استدعاءات مباشرة من المجلد الرئيسي
 from connection import get_db
 from models import User, Match, Prediction
 from bank import bank
@@ -21,27 +20,128 @@ def get_main_keyboard():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
+# ---------------------------------------------------------
+# 1. معالج البداية والتحقق من التسجيل والخصوصية
+# ---------------------------------------------------------
+
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
+    user_id = update.effective_user.id
+    
     with get_db() as db:
-        db_user = db.query(User).filter(User.id == user.id).first()
-        if not db_user:
-            db_user = User(
-                id=user.id,
-                username=user.username,
-                full_name=user.full_name or user.first_name
+        db_user = db.query(User).filter(User.id == user_id).first()
+        
+        # إذا لم يكن المستخدم موجوداً أو لم يسجل اسمه الثلاثي بعد
+        if not db_user or not db_user.full_name or len(db_user.full_name.split()) < 3:
+            if not db_user:
+                db_user = User(
+                    id=user_id,
+                    username=update.effective_user.username,
+                    full_name=None
+                )
+                db.add(db_user)
+                db.commit()
+
+            # تحديد حالة المستخدم بانتظار الاسم
+            state_manager.set_state(user_id, "AWAITING_FULL_NAME")
+
+            await update.message.reply_text(
+                "🔒 <b>مرحباً بك في بوت التوقعات!</b>\n\n"
+                "لحفظ نقاطك وإدراجك في جدول المنافسين، يرجى كتابة <b>اسمك الثلاثي</b> أولاً للبدء:",
+                parse_mode="HTML"
             )
-            db.add(db_user)
+            return
+
+        # إذا كان مسجلاً بالكامل
+        await update.message.reply_text(
+            f"أهلاً بك مجدداً يا <b>{db_user.full_name}</b> ⚽🏆\nاختر من القائمة أدناه:",
+            parse_mode="HTML",
+            reply_markup=get_main_keyboard()
+        )
+
+
+# ---------------------------------------------------------
+# 2. استقبال النصوص (الاسم الثلاثي والتوقعات)
+# ---------------------------------------------------------
+
+async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    text = update.message.text.strip()
+    user_state = state_manager.get_state(user_id)
+
+    # أ) معالجة استقبال الاسم الثلاثي
+    if user_state and user_state.get("state") == "AWAITING_FULL_NAME":
+        name_parts = text.split()
+        if len(name_parts) < 3:
+            await update.message.reply_text(
+                "⚠️ <b>الاسم غير مكتمل!</b>\nيرجى كتابة الاسم الثلاثي بوضوح (مثال: محمد أحمد علي):",
+                parse_mode="HTML"
+            )
+            return
+
+        # حفظ الاسم الثلاثي في جدول المنافسين
+        with get_db() as db:
+            db_user = db.query(User).filter(User.id == user_id).first()
+            if db_user:
+                db_user.full_name = text
+                db.commit()
+
+        # إنهاء الحالة وإظهار القائمة
+        state_manager.clear_state(user_id)
+        await update.message.reply_text(
+            f"✅ تم تسجيلك بنجاح بـاسم: <b>{text}</b>!\nيمكنك الآن المشاركة في التوقعات والمنافسة.",
+            parse_mode="HTML",
+            reply_markup=get_main_keyboard()
+        )
+        return
+
+    # ب) معالجة استقبال توقع النتيجة (مثال: 2-1)
+    if user_state and user_state.get("state") == "AWAITING_PREDICTION":
+        match_id = user_state.get("data", {}).get("match_id")
+        try:
+            parts = text.replace(" ", "").split("-")
+            if len(parts) != 2:
+                raise ValueError()
+            h_score, a_score = int(parts[0]), int(parts[1])
+        except ValueError:
+            await update.message.reply_text("❌ صيغة التوقع خاطئة! يرجى إرسال التوقع بالشكل: 2-1")
+            return
+
+        with get_db() as db:
+            existing = db.query(Prediction).filter(
+                Prediction.user_id == user_id,
+                Prediction.match_id == match_id
+            ).first()
+
+            if existing:
+                existing.predicted_home_score = h_score
+                existing.predicted_away_score = a_score
+            else:
+                new_pred = Prediction(
+                    user_id=user_id,
+                    match_id=match_id,
+                    predicted_home_score=h_score,
+                    predicted_away_score=a_score
+                )
+                db.add(new_pred)
             db.commit()
 
-    text = (
-        f"أهلاً بك يا <b>{user.first_name}</b> في بوت توقعات المباريات! ⚽🏆\n\n"
-        "اختر من القائمة أدناه لعرض المباريات والتوقع:"
-    )
-    await update.message.reply_text(text, parse_mode="HTML", reply_markup=get_main_keyboard())
+        state_manager.clear_state(user_id)
+        await update.message.reply_text("✅ تم تسجيل توقعك بنجاح! بالتوفيق 🎯")
+        return
 
+
+# ---------------------------------------------------------
+# 3. بقية المعالجات المجهزة لحماية الخصوصية
+# ---------------------------------------------------------
 
 async def todays_matches_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    with get_db() as db:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user or not user.full_name or len(user.full_name.split()) < 3:
+            await start_handler(update, context)
+            return
+
     matches = bank.sync_todays_matches()
     if not matches:
         await update.message.reply_text("لا توجد مباريات مسجلة لهذا اليوم.")
@@ -85,8 +185,9 @@ async def user_profile_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
         predictions = db.query(Prediction).filter(Prediction.user_id == user_id).all()
         text = (
-            f"👤 <b>الملف الشخصي:</b> {user.full_name}\n"
-            f"🏆 <b>مجموع النقاط:</b> {user.total_points}\n"
+            f"👤 <b>اسم المنافس:</b> {user.full_name}\n"
+            f"🆔 <b>المعرف:</b> <code>{user.id}</code>\n"
+            f"🏆 <b>إجمالي النقاط:</b> {user.total_points}\n"
             f"🎯 <b>عدد التوقعات:</b> {len(predictions)}\n"
         )
         await update.message.reply_text(text, parse_mode="HTML")
@@ -94,10 +195,10 @@ async def user_profile_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def leaderboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with get_db() as db:
-        top_users = db.query(User).order_by(User.total_points.desc()).limit(10).all()
-        text = "🏆 <b>جدول ترتيب أفضل 10 متوقعين:</b>\n\n"
+        top_users = db.query(User).filter(User.full_name.isnot(None)).order_by(User.total_points.desc()).limit(10).all()
+        text = "🏆 <b>جدول ترتيب أفضل 10 منافسين:</b>\n\n"
         for idx, u in enumerate(top_users, start=1):
-            text += f"{idx}. {u.full_name} - {u.total_points} نقطة\n"
+            text += f"{idx}. <b>{u.full_name}</b> — {u.total_points} نقطة\n"
         await update.message.reply_text(text, parse_mode="HTML")
 
 
