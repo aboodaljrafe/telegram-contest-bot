@@ -1,12 +1,17 @@
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
+# محاولة تحميل ملف .env محلياً بدون إيقاف السيرفر في البيئات السحابية
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 
 class Config:
     BOT_TOKEN = os.getenv("BOT_TOKEN", "")
     
-    # تحويل آمن لمنع الانهيار إذا كان المتغير فارغاً
+    # تحويل آمن لمعرفات المشرفين
     ADMIN_IDS = []
     admin_raw = os.getenv("ADMIN_IDS", "")
     if admin_raw:
