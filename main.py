@@ -136,26 +136,47 @@ def init_services():
     except Exception as e:
         logger.error(f"❌ خطأ أثناء تهيئة الخدمات: {e}")
 
-init_services()
+# تهيئة الخدمات فقط عند توفر التطبيق ولأول مرة لمنع التكرار
+if telegram_app and not scheduler:
+    init_services()
 
 # ---------------------------------------------------------
-# 6. معالجة تحديثات Webhook بشكل آمن
+# 6. معالجة تحديثات Webhook بشكل آمن مع Asyncio
 # ---------------------------------------------------------
+
+_loop = None
+
+def get_or_create_event_loop():
+    """الحصول على Event Loop مستقر ومنع إغلاقه مع كل طلب"""
+    global _loop
+    if _loop is None or _loop.is_closed():
+        try:
+            _loop = asyncio.get_event_loop()
+            if _loop.is_closed():
+                _loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(_loop)
+        except RuntimeError:
+            _loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(_loop)
+    return _loop
+
 
 def handle_async_update(update_json):
     if not telegram_app:
         return
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
+    
+    loop = get_or_create_event_loop()
+    
+    async def process():
         if not telegram_app._initialized:
-            loop.run_until_complete(telegram_app.initialize())
+            await telegram_app.initialize()
         update = Update.de_json(update_json, telegram_app.bot)
-        loop.run_until_complete(telegram_app.process_update(update))
+        await telegram_app.process_update(update)
+
+    try:
+        loop.run_until_complete(process())
     except Exception as e:
-        logger.error(f"❌ خطأ أثناء معالجة التحديث Async: {e}")
-    finally:
-        loop.close()
+        logger.error(f"❌ خطأ أثناء معالجة التحديث: {e}")
 
 # ---------------------------------------------------------
 # 7. مسارات السيرفر (Endpoints)
