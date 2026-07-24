@@ -37,7 +37,15 @@ async def admin_panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text("❌ عذراً، لا تملك صلاحيات الوصول للوحة المشرفين.")
             return
 
-    await update.message.reply_text("🛠️ <b>لوحة تحكم المشرفين مفعلة في أزرارك الرئيسية.</b>", parse_mode="HTML")
+    # استيراد دالة الأزرار محلياً لتجنب الـ Circular Import
+    from user_handlers import get_main_keyboard
+
+    # إرسال الرسالة مع إرفاق لوحة أزرار المشرف المحدثة
+    await update.message.reply_text(
+        "🛠️ <b>تم تفعيل لوحة تحكم المشرفين!</b>\nظهرت لك الأزرار الجديدة في القائمة بالأسفل 👇",
+        parse_mode="HTML",
+        reply_markup=get_main_keyboard(is_admin_user=True)
+    )
 
 
 # ---------------------------------------------------------
