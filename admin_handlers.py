@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
@@ -37,19 +37,17 @@ async def admin_panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text("❌ عذراً، لا تملك صلاحيات الوصول للوحة المشرفين.")
             return
 
-    # استيراد دالة الأزرار محلياً لتجنب الـ Circular Import
-    from user_handlers import get_main_keyboard
+    from user_handlers import get_admin_keyboard
 
-    # إرسال الرسالة مع إرفاق لوحة أزرار المشرف المحدثة
     await update.message.reply_text(
-        "🛠️ <b>تم تفعيل لوحة تحكم المشرفين!</b>\nظهرت لك الأزرار الجديدة في القائمة بالأسفل 👇",
+        "🛠️ <b>أهلاً بك في لوحة تحكم المشرف!</b>\nإليك الأزرار الخاصة بإدارة النظام:",
         parse_mode="HTML",
-        reply_markup=get_main_keyboard(is_admin_user=True)
+        reply_markup=get_admin_keyboard()
     )
 
 
 # ---------------------------------------------------------
-# 1. إضافة مباراة يدوياً (Flow)
+# 1. إضافة مباراة يدوياً (Flow مع تصحيح حاسبة التاريخ)
 # ---------------------------------------------------------
 
 async def start_add_match_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -83,11 +81,11 @@ async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         state_manager.set_state(user_id, "ADD_MATCH_DATE", {"home": home_team, "away": text})
         
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("اليوم 20:00", callback_data="set_date_today_20"), InlineKeyboardButton("اليوم 22:00", callback_data="set_date_today_22")],
-            [InlineKeyboardButton("غداً 20:00", callback_data="set_date_tomorrow_20"), InlineKeyboardButton("غداً 22:00", callback_data="set_date_tomorrow_22")]
+            [InlineKeyboardButton("اليوم 20:00 UTC", callback_data="set_date_today_20"), InlineKeyboardButton("اليوم 22:00 UTC", callback_data="set_date_today_22")],
+            [InlineKeyboardButton("غداً 20:00 UTC", callback_data="set_date_tomorrow_20"), InlineKeyboardButton("غداً 22:00 UTC", callback_data="set_date_tomorrow_22")]
         ])
         await update.message.reply_text(
-            f"✅ الضيف: <b>{text}</b>\n\n➕ <b>خطوة 3/3:</b> اختر موعد المباراة من الأزرار أو اكتبه بالشكل (YYYY-MM-DD HH:MM):",
+            f"✅ الضيف: <b>{text}</b>\n\n➕ <b>خطوة 3/3:</b> اختر موعد المباراة من الأزرار الأدناه أو اكتبه بالشكل (YYYY-MM-DD HH:MM):",
             parse_mode="HTML",
             reply_markup=keyboard
         )
@@ -103,7 +101,10 @@ async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         _create_manual_match(data.get("home"), data.get("away"), match_dt)
         state_manager.clear_state(user_id)
-        await update.message.reply_text(f"✅ <b>تمت إضافة المباراة بنجاح!</b>\n⚔️ {data.get('home')} vs {data.get('away')}", parse_mode="HTML")
+        await update.message.reply_text(
+            f"✅ <b>تمت إضافة المباراة بنجاح!</b>\n⚔️ {data.get('home')} vs {data.get('away')}\n📅 המوعد: {match_dt.strftime('%Y-%m-%d %H:%M UTC')}",
+            parse_mode="HTML"
+        )
         return True
 
     # د) استقبال رصد النتيجة يدويًا
@@ -125,7 +126,6 @@ async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 match.is_evaluated = True
                 db.commit()
 
-        # تقييم النقاط تلقائياً فور رصد النتيجة
         evaluate_all_finished_matches()
         state_manager.clear_state(user_id)
         await update.message.reply_text(f"✅ <b>تم رصد النتيجة الرسمية وتقييم نقاط المنافسين بنجاح!</b>", parse_mode="HTML")
@@ -138,7 +138,7 @@ def _create_manual_match(home: str, away: str, dt: datetime):
     with get_db() as db:
         new_match = Match(
             api_match_id=int(datetime.utcnow().timestamp()),
-            league_name="مباراة ودية / خاصة",
+            league_name="مباراة مخصصة",
             home_team=home,
             away_team=away,
             match_date=dt,
@@ -150,7 +150,7 @@ def _create_manual_match(home: str, away: str, dt: datetime):
 
 
 # ---------------------------------------------------------
-# 2. رصد النتيجة يدويًا
+# 2. رصد النتيجة ومعالجة تفاعل التاريخ
 # ---------------------------------------------------------
 
 async def start_set_result_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -175,15 +175,32 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
     user_id = query.from_user.id
     data = query.data
 
+    # معالجة أزرار التاريخ والتوقيت السريعة بدقة
     if data.startswith("set_date_"):
         user_state = state_manager.get_state(user_id)
         if user_state:
-            match_dt = datetime.utcnow()
+            now = datetime.utcnow()
+            if data == "set_date_today_20":
+                match_dt = now.replace(hour=20, minute=0, second=0, microsecond=0)
+            elif data == "set_date_today_22":
+                match_dt = now.replace(hour=22, minute=0, second=0, microsecond=0)
+            elif data == "set_date_tomorrow_20":
+                match_dt = (now + timedelta(days=1)).replace(hour=20, minute=0, second=0, microsecond=0)
+            elif data == "set_date_tomorrow_22":
+                match_dt = (now + timedelta(days=1)).replace(hour=22, minute=0, second=0, microsecond=0)
+            else:
+                match_dt = now
+
             home = user_state.get("data", {}).get("home")
             away = user_state.get("data", {}).get("away")
+            
             _create_manual_match(home, away, match_dt)
             state_manager.clear_state(user_id)
-            await query.edit_message_text(f"✅ <b>تمت إضافة المباراة بنجاح!</b>\n⚔️ {home} vs {away}", parse_mode="HTML")
+            
+            await query.edit_message_text(
+                f"✅ <b>تمت إضافة المباراة بنجاح!</b>\n⚔️ <b>{home}</b> vs <b>{away}</b>\n📅 الموعد: {match_dt.strftime('%Y-%m-%d %H:%M UTC')}",
+                parse_mode="HTML"
+            )
         return True
 
     if data.startswith("admin_select_m_"):
