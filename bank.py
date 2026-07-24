@@ -42,7 +42,7 @@ class FootballDataBank:
         }
         return mapping.get(api_status, api_status)
 
-    def sync_todays_matches((self, target_date: str = None) -> list:
+    def sync_todays_matches(self, target_date: str = None) -> list:
         if not target_date:
             target_date = datetime.utcnow().strftime("%Y-%m-%d")
 
@@ -116,7 +116,7 @@ class FootballDataBank:
                 for item in fixtures:
                     match = db.query(Match).filter(Match.api_match_id == item.get("id")).first()
                     if match:
-                        score_data = item.get("score", {}).get("fullTime", {})
+                        score_data = item.get("score", {}) .get("fullTime", {})
                         match.status = self._map_status(item.get("status"))
                         match.home_score = score_data.get("home")
                         match.away_score = score_data.get("away")
