@@ -88,10 +88,16 @@ async def start_add_match_manual(update: Update, context: ContextTypes.DEFAULT_T
             return
 
     state_manager.set_state(user_id, "ADD_MATCH_HOME")
+    
+    cancel_keyboard = ReplyKeyboardMarkup(
+        [[KeyboardButton("❌ إلغاء العملية")]],
+        resize_keyboard=True
+    )
+    
     await update.message.reply_text(
-        "➕ <b>خطوة 1/3:</b> أدخل اسم الفريق <b>المستضيف (صاحب الأرض)</b>:\n\n"
-        "<i>(أرسل 'إلغاء' في أي وقت لإلغاء العملية)</i>",
-        parse_mode="HTML"
+        "➕ <b>خطوة 1/3:</b> أدخل اسم الفريق <b>المستضيف (صاحب الأرض)</b>:",
+        parse_mode="HTML",
+        reply_markup=cancel_keyboard
     )
 
 
@@ -99,10 +105,10 @@ async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_id = update.effective_user.id
     text = update.message.text.strip()
 
-    if text.lower() in ["إلغاء", "الغي", "cancel"]:
+    if text in ["❌ إلغاء العملية", "إلغاء", "الغي", "cancel"]:
         if state_manager.get_state(user_id):
             state_manager.clear_state(user_id)
-            await update.message.reply_text("❌ <b>تم إلغاء العملية الجارية.</b>", parse_mode="HTML")
+            await admin_panel_handler(update, context)
             return True
         return False
 
@@ -122,47 +128,84 @@ async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return True
 
-    # ب) استقبال اسم الفريق الضيف
+    # ب) استقبال اسم الفريق الضيف وتهيئة وقت افتراضي (الوقت الحالي أو بعد ساعة)
     if st == "ADD_MATCH_AWAY":
         home_team = data.get("home")
-        state_manager.set_state(user_id, "ADD_MATCH_DATE", {"home": home_team, "away": text})
+        default_dt = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) + timedelta(hours=2)
+        
+        state_manager.set_state(user_id, "ADD_MATCH_DATE", {
+            "home": home_team, 
+            "away": text, 
+            "match_time": default_dt.strftime("%Y-%m-%d %H:%M")
+        })
 
-        keyboard = InlineKeyboardMarkup([
+        time_keyboard = ReplyKeyboardMarkup(
             [
-                InlineKeyboardButton("اليوم 20:00 UTC", callback_data="set_date_today_20"),
-                InlineKeyboardButton("اليوم 22:00 UTC", callback_data="set_date_today_22")
+                [KeyboardButton("➕ ساعة"), KeyboardButton("➖ ساعة")],
+                [KeyboardButton("➕ يوم"), KeyboardButton("➖ يوم")],
+                [KeyboardButton("✅ حفظ واعتماد الموعد")],
+                [KeyboardButton("❌ إلغاء العملية")]
             ],
-            [
-                InlineKeyboardButton("غداً 20:00 UTC", callback_data="set_date_tomorrow_20"),
-                InlineKeyboardButton("غداً 22:00 UTC", callback_data="set_date_tomorrow_22")
-            ]
-        ])
+            resize_keyboard=True
+        )
+
         await update.message.reply_text(
             f"✅ الضيف: <b>{text}</b>\n\n"
-            f"➕ <b>خطوة 3/3:</b> اختر موعد المباراة من الأزرار الأدناه أو اكتبه يدوياً بأسلوب:\n"
-            f"<code>YYYY-MM-DD HH:MM</code> (مثال: <code>2026-07-24 21:00</code>):",
+            f"➕ <b>خطوة 3/3:</b> اضبط موعد المباراة باستخدام الأزرار أدناه:\n"
+            f"📅 الموعد الحالي: <code>{default_dt.strftime('%Y-%m-%d %H:%M UTC')}</code>",
             parse_mode="HTML",
-            reply_markup=keyboard
+            reply_markup=time_keyboard
         )
         return True
 
-    # ج) استقبال وقت وموعد المباراة نصياً
+    # ج) معالجة أزرار التعديل التفاعلية لضبط التاريخ والوقت (بدون أزرار عائمة)
     if st == "ADD_MATCH_DATE":
+        current_time_str = data.get("match_time")
         try:
-            match_dt = datetime.strptime(text, "%Y-%m-%d %H:%M")
-        except ValueError:
+            match_dt = datetime.strptime(current_time_str, "%Y-%m-%d %H:%M")
+        except Exception:
+            match_dt = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+
+        if text == "➕ ساعة":
+            match_dt += timedelta(hours=1)
+        elif text == "➖ ساعة":
+            match_dt -= timedelta(hours=1)
+        elif text == "➕ يوم":
+            match_dt += timedelta(days=1)
+        elif text == "➖ يوم":
+            match_dt -= timedelta(days=1)
+        elif text == "✅ حفظ واعتماد الموعد":
+            _create_manual_match(data.get("home"), data.get("away"), match_dt)
+            state_manager.clear_state(user_id)
+            
+            # إعادة لوحة المشرف الرئيسية بعد الانتهاء بنجاح
             await update.message.reply_text(
-                "❌ <b>صيغة التاريخ خاطئة!</b>\nيرجى الكتابة بالصيغة: <code>2026-07-24 21:00</code>",
+                f"✅ <b>تمت إضافة المباراة بنجاح!</b>\n\n"
+                f"⚔️ <b>{data.get('home')}</b> vs <b>{data.get('away')}</b>\n"
+                f"📅 الموعد: <code>{match_dt.strftime('%Y-%m-%d %H:%M UTC')}</code>",
                 parse_mode="HTML"
             )
+            await admin_panel_handler(update, context)
             return True
+        else:
+            # محاولة قراءة التاريخ لو تم كتابته يدوياً من قبل المستخدم
+            try:
+                match_dt = datetime.strptime(text, "%Y-%m-%d %H:%M")
+            except ValueError:
+                await update.message.reply_text(
+                    "❌ <b>صيغة خاطئة!</b> استخدم الأزرار أدناه لضبط الوقت أو اكتبه هكذا: <code>2026-07-24 21:00</code>",
+                    parse_mode="HTML"
+                )
+                return True
 
-        _create_manual_match(data.get("home"), data.get("away"), match_dt)
-        state_manager.clear_state(user_id)
+        # تحديث الحالة بالوقت الجديد
+        data["match_time"] = match_dt.strftime("%Y-%m-%d %H:%M")
+        state_manager.set_state(user_id, "ADD_MATCH_DATE", data)
+
         await update.message.reply_text(
-            f"✅ <b>تمت إضافة المباراة بنجاح!</b>\n\n"
-            f"⚔️ <b>{data.get('home')}</b> vs <b>{data.get('away')}</b>\n"
-            f"📅 המوعد: <code>{match_dt.strftime('%Y-%m-%d %H:%M UTC')}</code>",
+            f"⏱️ <b>ضبط موعد المباراة:</b>\n"
+            f"📅 الموعد المختار: <code>{match_dt.strftime('%Y-%m-%d %H:%M UTC')}</code>\n\n"
+            f"استخدم الأزرار لتعديل الوقت أو اضغط حفظ:",
             parse_mode="HTML"
         )
         return True
@@ -195,6 +238,7 @@ async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "🏆 <b>تم رصد النتيجة الرسمية وتقييم نقاط جميع المنافسين بنجاح!</b>",
             parse_mode="HTML"
         )
+        await admin_panel_handler(update, context)
         return True
 
     return False
@@ -216,7 +260,7 @@ def _create_manual_match(home: str, away: str, dt: datetime):
 
 
 # ---------------------------------------------------------
-# 2. رصد النتيجة ومعالجة تفاعل التاريخ السريع
+# 2. رصد النتيجة اليدوي
 # ---------------------------------------------------------
 async def start_set_result_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -239,7 +283,7 @@ async def start_set_result_manual(update: Update, context: ContextTypes.DEFAULT_
             ])
 
         await update.message.reply_text(
-            "📝 <b>اختر المباراة المراد رصد نتيجتها الرسمية:</b>",
+            "📝 <b>اختر المباراة المراد رصد نتيجتها الرسمية (من الأزرار العائمة أدناه):</b>",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
@@ -250,43 +294,24 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
     user_id = query.from_user.id
     data = query.data
 
-    # معالجة أزرار التوقيت والتاريخ السريعة
-    if data.startswith("set_date_"):
-        user_state = state_manager.get_state(user_id)
-        if user_state:
-            now = datetime.now(timezone.utc)
-            if data == "set_date_today_20":
-                match_dt = now.replace(hour=20, minute=0, second=0, microsecond=0)
-            elif data == "set_date_today_22":
-                match_dt = now.replace(hour=22, minute=0, second=0, microsecond=0)
-            elif data == "set_date_tomorrow_20":
-                match_dt = (now + timedelta(days=1)).replace(hour=20, minute=0, second=0, microsecond=0)
-            elif data == "set_date_tomorrow_22":
-                match_dt = (now + timedelta(days=1)).replace(hour=22, minute=0, second=0, microsecond=0)
-            else:
-                match_dt = now
-
-            home = user_state.get("data", {}).get("home")
-            away = user_state.get("data", {}).get("away")
-
-            _create_manual_match(home, away, match_dt)
-            state_manager.clear_state(user_id)
-
-            await query.edit_message_text(
-                f"✅ <b>تمت إضافة المباراة بنجاح!</b>\n\n"
-                f"⚔️ <b>{home}</b> vs <b>{away}</b>\n"
-                f"📅 המوعد: <code>{match_dt.strftime('%Y-%m-%d %H:%M UTC')}</code>",
-                parse_mode="HTML"
-            )
-        return True
-
     if data.startswith("admin_select_m_"):
         match_id = int(data.split("_")[3])
         state_manager.set_state(user_id, f"SET_SCORE_{match_id}")
+        
+        cancel_keyboard = ReplyKeyboardMarkup(
+            [[KeyboardButton("❌ إلغاء العملية")]],
+            resize_keyboard=True
+        )
+        
         await query.edit_message_text(
-            "🎯 أرسل النتيجة الرسمية للمباراة بالترتيب: <b>(المستضيف - الضيف)</b>\n\n"
+            "🎯 أرسل الآن النتيجة الرسمية للمباراة بالترتيب: <b>(المستضيف - الضيف)</b>\n\n"
             "مثال: <code>2-1</code>",
             parse_mode="HTML"
+        )
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="أدخل النتيجة في الأسفل أو ألغِ العملية:",
+            reply_markup=cancel_keyboard
         )
         return True
 
