@@ -17,6 +17,10 @@ class Config:
 
     DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///contest_bot.db")
     
+    # إصلاح تلقائي لروابط PostgreSQL المتوافقة مع SQLAlchemy
+    if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
     # إعدادات Football-Data.org
     FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY", "")
     FOOTBALL_API_URL = os.getenv("FOOTBALL_API_URL", "https://api.football-data.org/v4")
