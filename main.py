@@ -12,10 +12,12 @@ from config import Config
 from connection import init_db
 from bank import bank
 from scoring import evaluate_all_finished_matches
+
+# استيراد كافة المعالجات بما فيها معالج النصوص العامة (الاسم الثلاثي والتوقعات)
 from user_handlers import (
     start_handler, refresh_data_handler, todays_matches_handler,
     live_matches_handler, user_profile_handler, leaderboard_handler,
-    callback_query_handler
+    callback_query_handler, text_message_handler
 )
 from admin_handlers import (
     admin_panel_handler, system_stats_handler,
@@ -50,20 +52,27 @@ if bot_token:
 def setup_handlers(application: Application):
     if not application:
         return
+    # الأوامر الرئيسية
     application.add_handler(CommandHandler("start", start_handler))
     application.add_handler(CommandHandler("admin", admin_panel_handler))
 
+    # أزرار القائمة العامة للمستخدم
     application.add_handler(MessageHandler(filters.Regex("^⚽ مباريات اليوم والتوقعات$"), todays_matches_handler))
     application.add_handler(MessageHandler(filters.Regex("^🔴 المباريات المباشرة$"), live_matches_handler))
     application.add_handler(MessageHandler(filters.Regex("^📊 رصيدي وتوقعاتي$"), user_profile_handler))
     application.add_handler(MessageHandler(filters.Regex("^🏆 جدول الترتيب$"), leaderboard_handler))
     application.add_handler(MessageHandler(filters.Regex("^🔄 تحديث البيانات$"), refresh_data_handler))
 
+    # أزرار لوحة تحكم المشرف
     application.add_handler(MessageHandler(filters.Regex("^📊 إحصائيات النظام$"), system_stats_handler))
     application.add_handler(MessageHandler(filters.Regex("^⚡ مزامنة وتقييم آلي$"), force_sync_and_eval_handler))
     application.add_handler(MessageHandler(filters.Regex("^👥 إدارة المستخدمين$"), admin_users_handler))
     application.add_handler(MessageHandler(filters.Regex("^⬅️ القائمة الرئيسية$"), start_handler))
 
+    # تسجيل معالج النصوص (الاسم الثلاثي وإدخال التوقعات)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
+
+    # معالج التفاعل مع الأزرار الشفافة
     application.add_handler(CallbackQueryHandler(callback_query_handler))
 
 if telegram_app:
@@ -73,18 +82,26 @@ if telegram_app:
 # التهيئة التزامنية عند إقلاع السيرفر
 # ---------------------------------------------------------
 
-try:
-    init_db()
-    
-    scheduler = BackgroundScheduler(daemon=True)
-    scheduler.add_job(lambda: bank.sync_live_matches(), 'interval', minutes=2)
-    scheduler.add_job(lambda: bank.sync_todays_matches(), 'interval', hours=1)
-    scheduler.add_job(state_manager.cleanup_expired_states, 'interval', minutes=30)
-    scheduler.start()
-    
-    logger.info("✅ تم إقلاع المجدول وقاعدة البيانات بنجاح.")
-except Exception as e:
-    logger.error(f"⚠️ خطأ أثناء تهيئة الخدمات: {e}")
+scheduler = None
+
+def init_services():
+    global scheduler
+    try:
+        init_db()
+        if scheduler is None:
+            scheduler = BackgroundScheduler(daemon=True)
+            scheduler.add_job(lambda: bank.sync_live_matches(), 'interval', minutes=2)
+            scheduler.add_job(lambda: bank.sync_todays_matches(), 'interval', hours=1)
+            
+            if hasattr(state_manager, 'cleanup_expired_states'):
+                scheduler.add_job(state_manager.cleanup_expired_states, 'interval', minutes=30)
+                
+            scheduler.start()
+            logger.info("✅ تم إقلاع المجدول وقاعدة البيانات بنجاح.")
+    except Exception as e:
+        logger.error(f"⚠️ خطأ أثناء تهيئة الخدمات: {e}")
+
+init_services()
 
 # ---------------------------------------------------------
 # معالجة تحديثات Webhook بشكل آمن مع asyncio
