@@ -51,25 +51,12 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # 2. إنشاء تطبيق التلجرام
-telegram_app = Application.builder().token(Config.BOT_TOKEN).build()
+bot_token = Config.BOT_TOKEN or "DUMMY_TOKEN"
+telegram_app = Application.builder().token(bot_token).build()
 
 # ---------------------------------------------------------
-# المهام المجدولة الآلية في الخلفية
+# تسجيل المعالجات والأزرار
 # ---------------------------------------------------------
-
-def scheduled_live_update_and_evaluation():
-    try:
-        bank.sync_live_matches()
-        evaluate_all_finished_matches()
-    except Exception as e:
-        logger.error(f"خطأ في المهمة المجدولة: {e}")
-
-def scheduled_daily_matches_sync():
-    try:
-        bank.sync_todays_matches()
-    except Exception as e:
-        logger.error(f"خطأ في مزامنة المباريات: {e}")
-
 def setup_handlers(application: Application):
     application.add_handler(CommandHandler("start", start_handler))
     application.add_handler(CommandHandler("admin", admin_panel_handler))
@@ -87,41 +74,37 @@ def setup_handlers(application: Application):
 
     application.add_handler(CallbackQueryHandler(callback_query_handler))
 
+setup_handlers(telegram_app)
+
 # ---------------------------------------------------------
-# التهيئة الأولية وتفعيل الـ Webhook
+# التهيئة التزامنية عند الإقلاع
 # ---------------------------------------------------------
-
-async def initialize_app():
-    init_db()
-    setup_handlers(telegram_app)
-    await telegram_app.initialize()
-
-    # تفعيل الـ Webhook تلقائياً لدى تلجرام
-    if Config.WEBHOOK_URL:
-        base_url = Config.WEBHOOK_URL.rstrip("/")
-        target_webhook = f"{base_url}/webhook"
-        await telegram_app.bot.set_webhook(url=target_webhook)
-        logger.info(f"🌐 تم تسجيل الـ Webhook بنجاح لدى تلجرام: {target_webhook}")
-
 try:
-    asyncio.run(initialize_app())
-
-    # تشغيل المجدول الآلي
+    init_db()
+    
+    # تشغيل المجدول الدوري في الخلفية
     scheduler = BackgroundScheduler(daemon=True)
-    scheduler.add_job(scheduled_live_update_and_evaluation, 'interval', minutes=2)
-    scheduler.add_job(scheduled_daily_matches_sync, 'interval', hours=1)
+    scheduler.add_job(lambda: bank.sync_live_matches(), 'interval', minutes=2)
+    scheduler.add_job(lambda: bank.sync_todays_matches(), 'interval', hours=1)
     scheduler.add_job(state_manager.cleanup_expired_states, 'interval', minutes=30)
     scheduler.start()
-
-    bank.sync_todays_matches()
-    logger.info("✅ تم تهيئة البوت والمجدول بنجاح.")
+    
+    logger.info("✅ تم تهيئة قاعدة البيانات والمجدول بنجاح.")
 except Exception as e:
     logger.error(f"⚠️ تنبيه أثناء التهيئة: {e}")
 
 # ---------------------------------------------------------
+# دالة معالجة تحديثات التلجرام داخل الـ Webhook
+# ---------------------------------------------------------
+async def process_telegram_update(update_json):
+    if not telegram_app._initialized:
+        await telegram_app.initialize()
+    update = Update.de_json(update_json, telegram_app.bot)
+    await telegram_app.process_update(update)
+
+# ---------------------------------------------------------
 # مسارات السيرفر (Endpoints)
 # ---------------------------------------------------------
-
 @app.route("/", methods=["GET"])
 @app.route("/health", methods=["GET"])
 def health_check():
@@ -131,18 +114,16 @@ def health_check():
 @app.route(f"/{Config.BOT_TOKEN}", methods=["POST", "GET"])
 def webhook():
     if request.method == "GET":
-        return jsonify({"status": "webhook endpoint active"}), 200
+        return jsonify({"status": "webhook active"}), 200
 
     if request.headers.get("content-type") == "application/json":
-        json_string = request.get_data().decode("utf-8")
-        update = Update.de_json(json_string, telegram_app.bot)
-
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(telegram_app.process_update(update))
-        loop.close()
-
+        json_data = request.get_json(force=True)
+        try:
+            asyncio.run(process_telegram_update(json_data))
+        except Exception as e:
+            logger.error(f"خطأ أثناء معالجة تحديث Webhook: {e}")
         return "OK", 200
+
     return "Forbidden", 403
 
 if __name__ == "__main__":
