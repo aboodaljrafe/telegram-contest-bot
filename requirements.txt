@@ -1,7 +1,17 @@
+# Telegram Bot Framework (v20+ Async)
 python-telegram-bot==20.8
-Flask==3.0.2
-SQLAlchemy==2.0.27
-requests==2.31.0
-python-dotenv==1.0.1
-APScheduler==3.10.4
+
+# Web Server & Webhook Framework
+Flask==3.0.3
+gunicorn==22.0.0
+
+# Database & ORM
+SQLAlchemy==2.0.31
 psycopg2-binary==2.9.9
+
+# HTTP Requests & Environment Variables
+requests==2.32.3
+python-dotenv==1.0.1
+
+# Background Scheduler for Auto-Sync
+APScheduler==3.10.4
