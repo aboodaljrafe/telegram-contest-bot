@@ -5,7 +5,7 @@ from flask import Flask, request, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
 from telegram import Update
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
+    Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 )
 
 from config import Config
@@ -13,15 +13,19 @@ from connection import init_db
 from bank import bank
 from scoring import evaluate_all_finished_matches
 
-# استيراد كافة المعالجات بما فيها معالج النصوص العامة (الاسم الثلاثي والتوقعات)
+# استيراد كافة المعالجات العامة للكل
 from user_handlers import (
     start_handler, refresh_data_handler, todays_matches_handler,
     live_matches_handler, user_profile_handler, leaderboard_handler,
     callback_query_handler, text_message_handler
 )
+
+# استيراد معالجات لوحة المشرف والأزرار الجديدة
 from admin_handlers import (
     admin_panel_handler, system_stats_handler,
-    force_sync_and_eval_handler, admin_users_handler
+    force_sync_and_eval_handler, admin_users_handler,
+    start_add_match_manual, start_set_result_manual,
+    admin_text_handler, admin_callback_handler
 )
 from state_manager import state_manager
 
@@ -45,6 +49,25 @@ if bot_token:
     except Exception as e:
         logger.error(f"❌ خطأ أثناء إنشاء تطبيق التلجرام: {e}")
 
+
+# ---------------------------------------------------------
+# معالجات مركزية مدمجة (Master Handlers)
+# ---------------------------------------------------------
+
+async def master_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """توجيه الرسائل النصية: يفحص أولاً إذا كانت تخص المشرف، وإن لم تكن يوجهها للمستخدم"""
+    is_admin_handled = await admin_text_handler(update, context)
+    if not is_admin_handled:
+        await text_message_handler(update, context)
+
+
+async def master_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """توجيه نقرات الأزرار الشفافة للمشرفين أو المستخدمين"""
+    is_admin_cb = await admin_callback_handler(update, context)
+    if not is_admin_cb:
+        await callback_query_handler(update, context)
+
+
 # ---------------------------------------------------------
 # تسجيل المعالجات والأزرار
 # ---------------------------------------------------------
@@ -52,6 +75,7 @@ if bot_token:
 def setup_handlers(application: Application):
     if not application:
         return
+
     # الأوامر الرئيسية
     application.add_handler(CommandHandler("start", start_handler))
     application.add_handler(CommandHandler("admin", admin_panel_handler))
@@ -63,17 +87,20 @@ def setup_handlers(application: Application):
     application.add_handler(MessageHandler(filters.Regex("^🏆 جدول الترتيب$"), leaderboard_handler))
     application.add_handler(MessageHandler(filters.Regex("^🔄 تحديث البيانات$"), refresh_data_handler))
 
-    # أزرار لوحة تحكم المشرف
+    # أزرار لوحة تحكم المشرف المدمجة
+    application.add_handler(MessageHandler(filters.Regex("^➕ إضافة مباراة يدويًا$"), start_add_match_manual))
+    application.add_handler(MessageHandler(filters.Regex("^📝 رصد نتيجة مباراة$"), start_set_result_manual))
     application.add_handler(MessageHandler(filters.Regex("^📊 إحصائيات النظام$"), system_stats_handler))
     application.add_handler(MessageHandler(filters.Regex("^⚡ مزامنة وتقييم آلي$"), force_sync_and_eval_handler))
     application.add_handler(MessageHandler(filters.Regex("^👥 إدارة المستخدمين$"), admin_users_handler))
     application.add_handler(MessageHandler(filters.Regex("^⬅️ القائمة الرئيسية$"), start_handler))
 
-    # تسجيل معالج النصوص (الاسم الثلاثي وإدخال التوقعات)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
+    # المعالج الموحد للنصوص (الاسم الثلاثي، التاريخ، نتائج المباريات)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, master_text_handler))
 
-    # معالج التفاعل مع الأزرار الشفافة
-    application.add_handler(CallbackQueryHandler(callback_query_handler))
+    # المعالج الموحد للأزرار التفاعلية (+ و - واختيار المواعيد)
+    application.add_handler(CallbackQueryHandler(master_callback_handler))
+
 
 if telegram_app:
     setup_handlers(telegram_app)
