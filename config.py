@@ -1,24 +1,32 @@
 import os
 from dotenv import load_dotenv
 
-# تحميل متغيرات البيئة من ملف .env
 load_dotenv()
 
 class Config:
-    # Telegram Bot Config
-    BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
-    ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
+    BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+    
+    # تحويل آمن لمنع الانهيار إذا كان المتغير فارغاً
+    ADMIN_IDS = []
+    admin_raw = os.getenv("ADMIN_IDS", "")
+    if admin_raw:
+        for item in admin_raw.split(","):
+            item = item.strip()
+            if item.isdigit():
+                ADMIN_IDS.append(int(item))
 
-    # Database Config (Default SQLite for local testing, PostgreSQL for deployment)
     DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///contest_bot.db")
-
-    # Football API Config (e.g. API-Football or Football-Data.org)
-    FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY", "YOUR_FREE_API_KEY")
-    FOOTBALL_API_URL = os.getenv("FOOTBALL_API_URL", "https://v3.football.api-sports.io")
-
-    # Webhook / Flask Config
+    
+    # إعدادات Football-Data.org
+    FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY", "")
+    FOOTBALL_API_URL = os.getenv("FOOTBALL_API_URL", "https://api.football-data.org/v4")
+    
     WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
-    PORT = int(os.getenv("PORT", 5000))
+    
+    # تحويل آمن للمنفذ
+    try:
+        PORT = int(os.getenv("PORT", 5000))
+    except (ValueError, TypeError):
+        PORT = 5000
 
-    # Cache Control (In seconds to avoid hitting API limits)
-    CACHE_TIMEOUT = 300  # 5 minutes
+    CACHE_TIMEOUT = 300
