@@ -1,30 +1,21 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 import requests
 
 from config import Config
-from database.connection import get_db
-from database.models import Match, SystemCache
+from connection import get_db
+from models import Match, SystemCache
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class FootballDataBank:
-    """
-    خدمة إدارة جلب بيانات المباريات والإحصائيات من الـ API المجاني
-    مع طبقة التخزين المؤقت (Caching) للتوفير في حدود الطلبات المسموحة.
-    """
-
     def __init__(self):
         self.base_url = Config.FOOTBALL_API_URL
-        self.headers = {
-            "x-rapidapi-key": Config.FOOTBALL_API_KEY,
-            "x-rapidapi-host": "v3.football.api-sports.io"
-        }
+        self.headers = {"X-Auth-Token": Config.FOOTBALL_API_KEY}
 
     def get_cached_response(self, cache_key: str, max_age_seconds: int = Config.CACHE_TIMEOUT):
-        """استرجاع الاستجابة المحفوظة موقتاً إن وجِدَت ولم تنتهي صلاحيتها"""
         with get_db() as db:
             cache = db.query(SystemCache).filter(SystemCache.key == cache_key).first()
             if cache:
@@ -34,7 +25,6 @@ class FootballDataBank:
         return None
 
     def save_cache_response(self, cache_key: str, data: dict):
-        """حفظ رد الـ API في جدول الكاش محلياً"""
         with get_db() as db:
             cache = db.query(SystemCache).filter(SystemCache.key == cache_key).first()
             if cache:
@@ -44,182 +34,93 @@ class FootballDataBank:
                 cache = SystemCache(key=cache_key, data=data)
                 db.add(cache)
 
-    def sync_todays_matches(self, target_date: str = None) -> list:
-        """
-        جلب وحفظ مباريات اليوم (أو تاريخ معين YYYY-MM-DD) في قاعدة البيانات.
-        """
+    def _map_status(self, api_status: str) -> str:
+        mapping = {
+            "SCHEDULED": "NS", "TIMED": "NS", "IN_PLAY": "LIVE",
+            "PAUSED": "HT", "FINISHED": "FT", "SUSPENDED": "SUSP",
+            "POSTPONED": "PST", "CANCELLED": "CANC"
+        }
+        return mapping.get(api_status, api_status)
+
+    def sync_todays_matches((self, target_date: str = None) -> list:
         if not target_date:
             target_date = datetime.utcnow().strftime("%Y-%m-%d")
 
-        cache_key = f"fixtures_{target_date}"
-        cached_data = self.get_cached_response(cache_key, max_age_seconds=1800)  # كاش 30 دقيقة للمباريات القادمة
+        cache_key = f"fd_matches_{target_date}"
+        cached_data = self.get_cached_response(cache_key, max_age_seconds=900)
 
         if cached_data:
             fixtures = cached_data
         else:
             try:
-                url = f"{self.base_url}/fixtures"
-                params = {"date": target_date}
+                url = f"{self.base_url}/matches"
+                params = {"dateFrom": target_date, "dateTo": target_date}
                 response = requests.get(url, headers=self.headers, params=params, timeout=10)
-
                 if response.status_code != 200:
-                    logger.error(f"فشل جلب المباريات من الـ API (الكود: {response.status_code})")
                     return []
-
                 data = response.json()
-                fixtures = data.get("response", [])
+                fixtures = data.get("matches", [])
                 if fixtures:
                     self.save_cache_response(cache_key, fixtures)
-            except requests.RequestException as e:
-                logger.error(f"خطأ اتصالات عند جلب المباريات: {e}")
+            except Exception as e:
+                logger.error(f"خطأ اتصال بـ API: {e}")
                 return []
 
         saved_matches = []
         with get_db() as db:
             for item in fixtures:
-                fixture_info = item.get("fixture", {})
-                teams_info = item.get("teams", {})
-                goals_info = item.get("goals", {})
-                league_info = item.get("league", {})
-
-                api_id = fixture_info.get("id")
+                api_id = item.get("id")
                 if not api_id:
                     continue
 
-                # تحويل تاريخ ووقت المباراة
-                raw_date = fixture_info.get("date", "")
-                match_date_utc = datetime.fromisoformat(raw_date.replace("Z", "+00:00")) if raw_date else datetime.utcnow()
-                status_short = fixture_info.get("status", {}).get("short", "NS")
-
-                # البحث عن المباراة أو إضافتها
                 match = db.query(Match).filter(Match.api_match_id == api_id).first()
+                status = self._map_status(item.get("status", "SCHEDULED"))
+                score_data = item.get("score", {}).get("fullTime", {})
+                
+                utc_date_str = item.get("utcDate", "")
+                match_date = datetime.fromisoformat(utc_date_str.replace("Z", "+00:00")) if utc_date_str else datetime.utcnow()
+
                 if not match:
                     match = Match(
                         api_match_id=api_id,
-                        league_name=league_info.get("name", "دوري غير معروف"),
-                        league_id=league_info.get("id"),
-                        home_team=teams_info.get("home", {}).get("name", "المضيف"),
-                        away_team=teams_info.get("away", {}).get("name", "الضيف"),
-                        home_logo=teams_info.get("home", {}).get("logo"),
-                        away_logo=teams_info.get("away", {}).get("logo"),
-                        match_date=match_date_utc.replace(tzinfo=None),
-                        status=status_short,
-                        home_score=goals_info.get("home"),
-                        away_score=goals_info.get("away")
+                        league_name=item.get("competition", {}).get("name", "بطولة عامة"),
+                        home_team=item.get("homeTeam", {}).get("name", "المضيف"),
+                        away_team=item.get("awayTeam", {}).get("name", "الضيف"),
+                        home_logo=item.get("homeTeam", {}).get("crest"),
+                        away_logo=item.get("awayTeam", {}).get("crest"),
+                        match_date=match_date.replace(tzinfo=None),
+                        status=status,
+                        home_score=score_data.get("home"),
+                        away_score=score_data.get("away")
                     )
                     db.add(match)
                 else:
-                    match.status = status_short
-                    match.home_score = goals_info.get("home")
-                    match.away_score = goals_info.get("away")
+                    match.status = status
+                    match.home_score = score_data.get("home")
+                    match.away_score = score_data.get("away")
 
                 saved_matches.append(match)
 
         return saved_matches
 
     def sync_live_matches(self):
-        """
-        جلب المباريات الجارية حالياً وتحديث نتائجها وإحصائياتها.
-        """
-        cache_key = "live_matches"
-        cached_data = self.get_cached_response(cache_key, max_age_seconds=60)  # كاش دقيقة واحدة للمباشر
-
-        if cached_data:
-            live_fixtures = cached_data
-        else:
-            try:
-                url = f"{self.base_url}/fixtures"
-                params = {"live": "all"}
-                response = requests.get(url, headers=self.headers, params=params, timeout=10)
-                if response.status_code != 200:
-                    return []
-                data = response.json()
-                live_fixtures = data.get("response", [])
-                self.save_cache_response(cache_key, live_fixtures)
-            except requests.RequestException as e:
-                logger.error(f"خطأ في جلب المباريات المباشرة: {e}")
-                return []
-
-        with get_db() as db:
-            for item in live_fixtures:
-                fixture_info = item.get("fixture", {})
-                goals_info = item.get("goals", {})
-                api_id = fixture_info.get("id")
-
-                match = db.query(Match).filter(Match.api_match_id == api_id).first()
-                if match:
-                    match.status = fixture_info.get("status", {}).get("short", "LIVE")
-                    match.home_score = goals_info.get("home")
-                    match.away_score = goals_info.get("away")
-
-                    # تحديث إحصائيات المباراة الجارية تلقائياً
-                    stats = self.fetch_match_statistics(api_id)
-                    if stats:
-                        match.statistics = stats
-
-    def fetch_match_statistics(self, api_match_id: int) -> dict:
-        """
-        جلب الإحصائيات تفصيلياً (الاستحواذ، التسديدات، الكروت...)
-        """
-        cache_key = f"stats_{api_match_id}"
-        cached_stats = self.get_cached_response(cache_key, max_age_seconds=300)
-        if cached_stats:
-            return cached_stats
-
         try:
-            url = f"{self.base_url}/fixtures/statistics"
-            params = {"fixture": api_match_id}
+            url = f"{self.base_url}/matches"
+            params = {"status": "IN_PLAY"}
             response = requests.get(url, headers=self.headers, params=params, timeout=10)
             if response.status_code != 200:
-                return {}
-
-            data = response.json().get("response", [])
-            stats_formatted = {}
-            for team_data in data:
-                team_name = team_data.get("team", {}).get("name")
-                statistics = {s["type"]: s["value"] for s in team_data.get("statistics", [])}
-                stats_formatted[team_name] = statistics
-
-            if stats_formatted:
-                self.save_cache_response(cache_key, stats_formatted)
-            return stats_formatted
-        except requests.RequestException as e:
-            logger.error(f"خطأ جلب إحصائيات المباراة {api_match_id}: {e}")
-            return {}
-
-    def fetch_player_of_the_match(self, api_match_id: int) -> str:
-        """
-        استخراج رجل المباراة (Man of the Match) تلقائياً بناءً على تقييمات اللاعبين.
-        """
-        try:
-            url = f"{self.base_url}/fixtures/players"
-            params = {"fixture": api_match_id}
-            response = requests.get(url, headers=self.headers, params=params, timeout=10)
-            if response.status_code != 200:
-                return "غير محدد"
-
-            data = response.json().get("response", [])
-            top_player = None
-            top_rating = 0.0
-
-            for team_data in data:
-                for player_info in team_data.get("players", []):
-                    for item in player_info.get("statistics", []):
-                        games = item.get("games", {})
-                        rating = games.get("rating")
-                        if rating:
-                            try:
-                                r_float = float(rating)
-                                if r_float > top_rating:
-                                    top_rating = r_float
-                                    top_player = player_info.get("player", {}).get("name")
-                            except ValueError:
-                                continue
-            return top_player if top_player else "غير محدد"
+                return
+            fixtures = response.json().get("matches", [])
+            
+            with get_db() as db:
+                for item in fixtures:
+                    match = db.query(Match).filter(Match.api_match_id == item.get("id")).first()
+                    if match:
+                        score_data = item.get("score", {}).get("fullTime", {})
+                        match.status = self._map_status(item.get("status"))
+                        match.home_score = score_data.get("home")
+                        match.away_score = score_data.get("away")
         except Exception as e:
-            logger.error(f"خطأ في تحديد رجل المباراة: {e}")
-            return "غير محدد"
+            logger.error(f"خطأ التحديث المباشر: {e}")
 
-
-# كائن منفرد للاستخدام في جميع أجزاء المشروع
 bank = FootballDataBank()
