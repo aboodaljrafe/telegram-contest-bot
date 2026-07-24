@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
@@ -10,10 +10,14 @@ from bank import bank
 from scoring import evaluate_all_finished_matches
 from state_manager import state_manager
 
+# إعداد السجلات
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------
+# دالة التحقق من صلاحيات المشرف
+# ---------------------------------------------------------
 def is_admin(user_id: int, db_session=None) -> bool:
     raw_admin_ids = getattr(Config, 'ADMIN_IDS', [])
     admin_ids = []
@@ -30,91 +34,150 @@ def is_admin(user_id: int, db_session=None) -> bool:
     return False
 
 
+# ---------------------------------------------------------
+# لوحة تحكم المشرف (Admin Panel)
+# ---------------------------------------------------------
 async def admin_panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     with get_db() as db:
         if not is_admin(user_id, db):
-            await update.message.reply_text("❌ عذراً، لا تملك صلاحيات الوصول للوحة المشرفين.")
             return
 
-    from user_handlers import get_admin_keyboard
-
-    await update.message.reply_text(
-        "🛠️ <b>أهلاً بك في لوحة تحكم المشرف!</b>\nإليك الأزرار الخاصة بإدارة النظام:",
-        parse_mode="HTML",
-        reply_markup=get_admin_keyboard()
+    text = (
+        "🛠️ <b>لوحة تحكم المشرف</b>\n"
+        "───────────────────\n"
+        "أهلاً بك عزيزي المشرف، اختر الخدمة المطلوبة من القائمة التالية:"
     )
 
+    keyboard = ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("➕ إضافة مباراة يدويًا"), KeyboardButton("📝 رصد نتيجة مباراة")],
+            [KeyboardButton("📊 إحصائيات النظام"), KeyboardButton("👥 إدارة المستخدمين")],
+            [KeyboardButton("🔄 تحديث البيانات"), KeyboardButton("⚡ مزامنة وتقييم آلي")],
+            [KeyboardButton("⬅️ القائمة الرئيسية")]
+        ],
+        resize_keyboard=True
+    )
+
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+
+
+async def refresh_data_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    with get_db() as db:
+        if not is_admin(user_id, db):
+            return
+
+    await update.message.reply_text("🔄 <b>جاري مزامنة وجلب أحدث البيانات...</b>", parse_mode="HTML")
+    try:
+        bank.sync_todays_matches()
+        bank.sync_live_matches()
+        await update.message.reply_text("✅ <b>تم تحديث المباشر ومباريات اليوم بنجاح!</b>", parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"خطأ أثناء تحديث البيانات: {e}")
+        await update.message.reply_text(f"❌ <b>حدث خطأ أثناء التحديث:</b> {e}", parse_mode="HTML")
+
 
 # ---------------------------------------------------------
-# 1. إضافة مباراة يدوياً (Flow مع تصحيح حاسبة التاريخ)
+# 1. تدفق إضافة مباراة يدوياً (Manual Match Addition Flow)
 # ---------------------------------------------------------
-
 async def start_add_match_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     with get_db() as db:
-        if not is_admin(user_id, db): return
+        if not is_admin(user_id, db):
+            return
 
     state_manager.set_state(user_id, "ADD_MATCH_HOME")
-    await update.message.reply_text("➕ <b>خطوة 1/3:</b> أدخل اسم الفريق <b>المستضيف (صاحب الأرض)</b>:", parse_mode="HTML")
+    await update.message.reply_text(
+        "➕ <b>خطوة 1/3:</b> أدخل اسم الفريق <b>المستضيف (صاحب الأرض)</b>:\n\n"
+        "<i>(أرسل 'إلغاء' في أي وقت لإلغاء العملية)</i>",
+        parse_mode="HTML"
+    )
 
 
 async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text.strip()
-    user_state = state_manager.get_state(user_id)
 
-    if not user_state: return False
+    if text.lower() in ["إلغاء", "الغي", "cancel"]:
+        if state_manager.get_state(user_id):
+            state_manager.clear_state(user_id)
+            await update.message.reply_text("❌ <b>تم إلغاء العملية الجارية.</b>", parse_mode="HTML")
+            return True
+        return False
+
+    user_state = state_manager.get_state(user_id)
+    if not user_state:
+        return False
 
     st = user_state.get("state")
     data = user_state.get("data", {})
 
-    # أ) استقبال اسم المستضيف
+    # أ) استقبال اسم الفريق المستضيف
     if st == "ADD_MATCH_HOME":
         state_manager.set_state(user_id, "ADD_MATCH_AWAY", {"home": text})
-        await update.message.reply_text(f"✅ المستضيف: <b>{text}</b>\n\n➕ <b>خطوة 2/3:</b> أدخل اسم الفريق <b>الضيف</b>:", parse_mode="HTML")
+        await update.message.reply_text(
+            f"✅ المستضيف: <b>{text}</b>\n\n➕ <b>خطوة 2/3:</b> أدخل اسم الفريق <b>الضيف</b>:",
+            parse_mode="HTML"
+        )
         return True
 
-    # ب) استقبال اسم الضيف
+    # ب) استقبال اسم الفريق الضيف
     if st == "ADD_MATCH_AWAY":
         home_team = data.get("home")
         state_manager.set_state(user_id, "ADD_MATCH_DATE", {"home": home_team, "away": text})
-        
+
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("اليوم 20:00 UTC", callback_data="set_date_today_20"), InlineKeyboardButton("اليوم 22:00 UTC", callback_data="set_date_today_22")],
-            [InlineKeyboardButton("غداً 20:00 UTC", callback_data="set_date_tomorrow_20"), InlineKeyboardButton("غداً 22:00 UTC", callback_data="set_date_tomorrow_22")]
+            [
+                InlineKeyboardButton("اليوم 20:00 UTC", callback_data="set_date_today_20"),
+                InlineKeyboardButton("اليوم 22:00 UTC", callback_data="set_date_today_22")
+            ],
+            [
+                InlineKeyboardButton("غداً 20:00 UTC", callback_data="set_date_tomorrow_20"),
+                InlineKeyboardButton("غداً 22:00 UTC", callback_data="set_date_tomorrow_22")
+            ]
         ])
         await update.message.reply_text(
-            f"✅ الضيف: <b>{text}</b>\n\n➕ <b>خطوة 3/3:</b> اختر موعد المباراة من الأزرار الأدناه أو اكتبه بالشكل (YYYY-MM-DD HH:MM):",
+            f"✅ الضيف: <b>{text}</b>\n\n"
+            f"➕ <b>خطوة 3/3:</b> اختر موعد المباراة من الأزرار الأدناه أو اكتبه يدوياً بأسلوب:\n"
+            f"<code>YYYY-MM-DD HH:MM</code> (مثال: <code>2026-07-24 21:00</code>):",
             parse_mode="HTML",
             reply_markup=keyboard
         )
         return True
 
-    # ج) استقبال الوقت والموعد نصياً
+    # ج) استقبال وقت وموعد المباراة نصياً
     if st == "ADD_MATCH_DATE":
         try:
             match_dt = datetime.strptime(text, "%Y-%m-%d %H:%M")
         except ValueError:
-            await update.message.reply_text("❌ صيغة التاريخ خاطئة! اكتبه بالصيغة: <code>2026-07-24 21:00</code>", parse_mode="HTML")
+            await update.message.reply_text(
+                "❌ <b>صيغة التاريخ خاطئة!</b>\nيرجى الكتابة بالصيغة: <code>2026-07-24 21:00</code>",
+                parse_mode="HTML"
+            )
             return True
 
         _create_manual_match(data.get("home"), data.get("away"), match_dt)
         state_manager.clear_state(user_id)
         await update.message.reply_text(
-            f"✅ <b>تمت إضافة المباراة بنجاح!</b>\n⚔️ {data.get('home')} vs {data.get('away')}\n📅 המوعد: {match_dt.strftime('%Y-%m-%d %H:%M UTC')}",
+            f"✅ <b>تمت إضافة المباراة بنجاح!</b>\n\n"
+            f"⚔️ <b>{data.get('home')}</b> vs <b>{data.get('away')}</b>\n"
+            f"📅 המوعد: <code>{match_dt.strftime('%Y-%m-%d %H:%M UTC')}</code>",
             parse_mode="HTML"
         )
         return True
 
-    # د) استقبال رصد النتيجة يدويًا
+    # د) استقبال النتيجة يدويًا من قبل المشرف
     if st.startswith("SET_SCORE_"):
         match_id = int(st.split("_")[2])
         try:
             parts = text.replace(" ", "").split("-")
             h_score, a_score = int(parts[0]), int(parts[1])
         except Exception:
-            await update.message.reply_text("❌ صيغة النتيجة خاطئة! يرجى كتابتها بالشكل: 2-1")
+            await update.message.reply_text(
+                "❌ <b>صيغة النتيجة خاطئة!</b>\nيرجى كتابتها بالشكل: <code>2-1</code> (مضيف - ضيف)",
+                parse_mode="HTML"
+            )
             return True
 
         with get_db() as db:
@@ -128,7 +191,10 @@ async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         evaluate_all_finished_matches()
         state_manager.clear_state(user_id)
-        await update.message.reply_text(f"✅ <b>تم رصد النتيجة الرسمية وتقييم نقاط المنافسين بنجاح!</b>", parse_mode="HTML")
+        await update.message.reply_text(
+            "🏆 <b>تم رصد النتيجة الرسمية وتقييم نقاط جميع المنافسين بنجاح!</b>",
+            parse_mode="HTML"
+        )
         return True
 
     return False
@@ -137,7 +203,7 @@ async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 def _create_manual_match(home: str, away: str, dt: datetime):
     with get_db() as db:
         new_match = Match(
-            api_match_id=int(datetime.utcnow().timestamp()),
+            api_match_id=int(datetime.now(timezone.utc).timestamp()),
             league_name="مباراة مخصصة",
             home_team=home,
             away_team=away,
@@ -150,24 +216,33 @@ def _create_manual_match(home: str, away: str, dt: datetime):
 
 
 # ---------------------------------------------------------
-# 2. رصد النتيجة ومعالجة تفاعل التاريخ
+# 2. رصد النتيجة ومعالجة تفاعل التاريخ السريع
 # ---------------------------------------------------------
-
 async def start_set_result_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     with get_db() as db:
-        if not is_admin(user_id, db): return
+        if not is_admin(user_id, db):
+            return
 
         unclosed_matches = db.query(Match).filter(Match.is_evaluated == False).all()
         if not unclosed_matches:
-            await update.message.reply_text("لا توجد مباريات معلقة بانتظار رصد النتيجة.")
+            await update.message.reply_text("✨ <b>لا توجد مباريات معلقة بانتظار رصد النتيجة حالياً.</b>", parse_mode="HTML")
             return
 
         keyboard = []
         for m in unclosed_matches:
-            keyboard.append([InlineKeyboardButton(f"⚽ {m.home_team} vs {m.away_team}", callback_data=f"admin_select_m_{m.id}")])
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"⚽ {m.home_team} vs {m.away_team}",
+                    callback_data=f"admin_select_m_{m.id}"
+                )
+            ])
 
-        await update.message.reply_text("📝 <b>اختر المباراة لرصد نتيجتها الرسمية:</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.message.reply_text(
+            "📝 <b>اختر المباراة المراد رصد نتيجتها الرسمية:</b>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
 
 async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -175,11 +250,11 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
     user_id = query.from_user.id
     data = query.data
 
-    # معالجة أزرار التاريخ والتوقيت السريعة بدقة
+    # معالجة أزرار التوقيت والتاريخ السريعة
     if data.startswith("set_date_"):
         user_state = state_manager.get_state(user_id)
         if user_state:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             if data == "set_date_today_20":
                 match_dt = now.replace(hour=20, minute=0, second=0, microsecond=0)
             elif data == "set_date_today_22":
@@ -193,12 +268,14 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
 
             home = user_state.get("data", {}).get("home")
             away = user_state.get("data", {}).get("away")
-            
+
             _create_manual_match(home, away, match_dt)
             state_manager.clear_state(user_id)
-            
+
             await query.edit_message_text(
-                f"✅ <b>تمت إضافة المباراة بنجاح!</b>\n⚔️ <b>{home}</b> vs <b>{away}</b>\n📅 الموعد: {match_dt.strftime('%Y-%m-%d %H:%M UTC')}",
+                f"✅ <b>تمت إضافة المباراة بنجاح!</b>\n\n"
+                f"⚔️ <b>{home}</b> vs <b>{away}</b>\n"
+                f"📅 המوعد: <code>{match_dt.strftime('%Y-%m-%d %H:%M UTC')}</code>",
                 parse_mode="HTML"
             )
         return True
@@ -206,30 +283,65 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
     if data.startswith("admin_select_m_"):
         match_id = int(data.split("_")[3])
         state_manager.set_state(user_id, f"SET_SCORE_{match_id}")
-        await query.edit_message_text("أرسل النتيجة الرسمية للمباراة بالشكل: (مضيف - ضيف) مثال: <b>2-1</b>", parse_mode="HTML")
+        await query.edit_message_text(
+            "🎯 أرسل النتيجة الرسمية للمباراة بالترتيب: <b>(المستضيف - الضيف)</b>\n\n"
+            "مثال: <code>2-1</code>",
+            parse_mode="HTML"
+        )
         return True
 
     return False
 
 
+# ---------------------------------------------------------
+# 3. إحصائيات النظام وإدارة المستخدمين والمزامنة
+# ---------------------------------------------------------
 async def system_stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     with get_db() as db:
+        if not is_admin(user_id, db):
+            return
+
         total_users = db.query(User).count()
         total_matches = db.query(Match).count()
         total_predictions = db.query(Prediction).count()
-        await update.message.reply_text(f"📊 <b>إحصائيات النظام:</b>\n\n👤 المستخدمين: {total_users}\n⚽ المباريات: {total_matches}\n🎯 التوقعات: {total_predictions}", parse_mode="HTML")
+
+        text = (
+            "📊 <b>إحصائيات نظام البوت الرسمية:</b>\n"
+            "───────────────────\n"
+            f"👤 <b>إجمالي المنافسين:</b> {total_users}\n"
+            f"⚽ <b>إجمالي المباريات:</b> {total_matches}\n"
+            f"🎯 <b>إجمالي التوقعات:</b> {total_predictions}\n"
+        )
+        await update.message.reply_text(text, parse_mode="HTML")
 
 
 async def admin_users_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     with get_db() as db:
+        if not is_admin(user_id, db):
+            return
+
         users = db.query(User).order_by(User.created_at.desc()).limit(10).all()
-        text = "👥 <b>أحدث 10 مستخدمين:</b>\n\n"
+        text = "👥 <b>أحدث 10 منافسين انضموا للبوت:</b>\n───────────────────\n"
         for u in users:
-            text += f"• <b>{u.full_name or 'بدون اسم'}</b> (<code>{u.id}</code>)\n"
+            name = u.full_name or 'بدون اسم'
+            text += f"• <b>{name}</b> | <code>{u.id}</code>\n"
+
         await update.message.reply_text(text, parse_mode="HTML")
 
 
 async def force_sync_and_eval_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    bank.sync_todays_matches()
-    evaluate_all_finished_matches()
-    await update.message.reply_text("✅ تمت المزامنة والتقييم بنجاح!")
+    user_id = update.effective_user.id
+    with get_db() as db:
+        if not is_admin(user_id, db):
+            return
+
+    await update.message.reply_text("⚡ <b>جاري تنفيذ المزامنة والتقييم الآلي فوراً...</b>", parse_mode="HTML")
+    try:
+        bank.sync_todays_matches()
+        evaluate_all_finished_matches()
+        await update.message.reply_text("✅ <b>تمت عملية المزامنة وحساب تقييم التوقعات بنجاح!</b>", parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"خطأ أثناء التقييم والمزامنة: {e}")
+        await update.message.reply_text(f"❌ <b>حدث خطأ:</b> {e}", parse_mode="HTML")
