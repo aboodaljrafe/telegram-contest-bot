@@ -5,7 +5,12 @@ from flask import Flask, request, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
 from telegram import Update
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+    Application,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    filters,
+    ContextTypes,
 )
 
 from config import Config
@@ -13,33 +18,37 @@ from connection import init_db
 from bank import bank
 from scoring import evaluate_all_finished_matches
 
-# استيراد معالجات المستخدم (المنافس)
 from user_handlers import (
-    start_handler, todays_matches_handler, live_matches_handler, 
-    user_profile_handler, leaderboard_handler, callback_query_handler, 
-    text_message_handler
+    start_handler,
+    todays_matches_handler,
+    live_matches_handler,
+    user_profile_handler,
+    leaderboard_handler,
+    callback_query_handler,
+    text_message_handler,
 )
 
-# استيراد معالجات المشرف
 from admin_handlers import (
-    admin_panel_handler, system_stats_handler, force_sync_and_eval_handler, 
-    admin_users_handler, start_add_match_manual, start_set_result_manual,
-    refresh_data_handler, admin_text_handler, admin_callback_handler
+    admin_panel_handler,
+    system_stats_handler,
+    force_sync_and_eval_handler,
+    admin_users_handler,
+    start_add_match_manual,
+    start_set_result_manual,
+    refresh_data_handler,
+    admin_text_handler,
+    admin_callback_handler,
 )
 from state_manager import state_manager
 
-# ---------------------------------------------------------
-# 1. إعداد السجلات (Logging)
-# ---------------------------------------------------------
+# 1. Logging Setup
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+    level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------
-# 2. إنشاء تطبيق Flask وتلجرام
-# ---------------------------------------------------------
+# 2. Flask & Telegram App Setup
 app = Flask(__name__)
 bot_token = (Config.BOT_TOKEN or "").strip()
 telegram_app = None
@@ -52,57 +61,43 @@ if bot_token:
         logger.error(f"❌ خطأ أثناء إنشاء تطبيق التلجرام: {e}")
 
 
-# ---------------------------------------------------------
-# 3. معالجات مركزية موحدة (Master Handlers)
-# ---------------------------------------------------------
-
+# 3. Master Handlers
 async def master_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """يفحص أولاً إن كانت الرسالة النصية تخص عملية للمشرف، وإن لم تكن يوجهها للمنافس"""
     is_admin_handled = await admin_text_handler(update, context)
     if not is_admin_handled:
         await text_message_handler(update, context)
 
 
 async def master_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """يفحص نقرات الأزرار الشفافة للمشرف أولاً، ثم للمنافسين"""
     is_admin_cb = await admin_callback_handler(update, context)
     if not is_admin_cb:
         await callback_query_handler(update, context)
 
 
-# ---------------------------------------------------------
-# 4. تسجيل كافة الأزرار والأوامر
-# ---------------------------------------------------------
-
+# 4. Handlers Registration
 def setup_handlers(application: Application):
     if not application:
         return
 
-    # الأوامر الرئيسية
     application.add_handler(CommandHandler("start", start_handler))
     application.add_handler(CommandHandler("admin", admin_panel_handler))
 
-    # أزرار واجهة المنافس (المستخدم العادي)
     application.add_handler(MessageHandler(filters.Regex("^⚽ مباريات اليوم والتوقعات$"), todays_matches_handler))
     application.add_handler(MessageHandler(filters.Regex("^🔴 المباريات المباشرة$"), live_matches_handler))
     application.add_handler(MessageHandler(filters.Regex("^📊 رصيدي وتوقعاتي$"), user_profile_handler))
     application.add_handler(MessageHandler(filters.Regex("^🏆 جدول الترتيب$"), leaderboard_handler))
 
-    # زر دخول لوحة المشرف (يظهر للمشرفين فقط)
     application.add_handler(MessageHandler(filters.Regex("^🛠️ لوحة تحكم المشرف$"), admin_panel_handler))
 
-    # أزرار لوحة تحكم المشرف المنفصلة
     application.add_handler(MessageHandler(filters.Regex("^➕ إضافة مباراة يدويًا$"), start_add_match_manual))
     application.add_handler(MessageHandler(filters.Regex("^📝 رصد نتيجة مباراة$"), start_set_result_manual))
     application.add_handler(MessageHandler(filters.Regex("^📊 إحصائيات النظام$"), system_stats_handler))
     application.add_handler(MessageHandler(filters.Regex("^👥 إدارة المستخدمين$"), admin_users_handler))
     application.add_handler(MessageHandler(filters.Regex("^🔄 تحديث البيانات$"), refresh_data_handler))
     application.add_handler(MessageHandler(filters.Regex("^⚡ مزامنة وتقييم آلي$"), force_sync_and_eval_handler))
-    
-    # زر العودة للقائمة الرئيسية
+
     application.add_handler(MessageHandler(filters.Regex("^⬅️ القائمة الرئيسية$"), start_handler))
 
-    # المعالجات الشاملة للنصوص والأزرار
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, master_text_handler))
     application.add_handler(CallbackQueryHandler(master_callback_handler))
 
@@ -110,10 +105,7 @@ def setup_handlers(application: Application):
 if telegram_app:
     setup_handlers(telegram_app)
 
-# ---------------------------------------------------------
-# 5. المجدول الآلي للخدمات في الخلفية
-# ---------------------------------------------------------
-
+# 5. Background Scheduler Services
 scheduler = None
 
 def init_services():
@@ -122,32 +114,22 @@ def init_services():
         init_db()
         if scheduler is None:
             scheduler = BackgroundScheduler(daemon=True)
-            # مزامنة المباريات المباشرة كل دقيقتين
-            scheduler.add_job(lambda: bank.sync_live_matches(), 'interval', minutes=2)
-            # مزامنة مباريات اليوم كل ساعة
-            scheduler.add_job(lambda: bank.sync_todays_matches(), 'interval', hours=1)
-            
-            # تنظيف الحالات المنتهية إن وجدت
-            if hasattr(state_manager, 'cleanup_expired_states'):
-                scheduler.add_job(state_manager.cleanup_expired_states, 'interval', minutes=30)
+            scheduler.add_job(lambda: bank.sync_live_matches(), "interval", minutes=2)
+            scheduler.add_job(lambda: bank.sync_todays_matches(), "interval", hours=1)
+
+            if hasattr(state_manager, "cleanup_expired_states"):
+                scheduler.add_job(state_manager.cleanup_expired_states, "interval", minutes=30)
 
             scheduler.start()
             logger.info("✅ تم تشغيل قاعدة البيانات والمجدول الآلي بنجاح.")
     except Exception as e:
         logger.error(f"❌ خطأ أثناء تهيئة الخدمات: {e}")
 
-# تهيئة الخدمات فقط عند توفر التطبيق ولأول مرة لمنع التكرار
-if telegram_app and not scheduler:
-    init_services()
 
-# ---------------------------------------------------------
-# 6. معالجة تحديثات Webhook بشكل آمن مع Asyncio
-# ---------------------------------------------------------
-
+# 6. Async Event Loop Handler
 _loop = None
 
 def get_or_create_event_loop():
-    """الحصول على Event Loop مستقر ومنع إغلاقه مع كل طلب"""
     global _loop
     if _loop is None or _loop.is_closed():
         try:
@@ -164,9 +146,13 @@ def get_or_create_event_loop():
 def handle_async_update(update_json):
     if not telegram_app:
         return
-    
+
+    global scheduler
+    if scheduler is None:
+        init_services()
+
     loop = get_or_create_event_loop()
-    
+
     async def process():
         if not telegram_app._initialized:
             await telegram_app.initialize()
@@ -178,10 +164,8 @@ def handle_async_update(update_json):
     except Exception as e:
         logger.error(f"❌ خطأ أثناء معالجة التحديث: {e}")
 
-# ---------------------------------------------------------
-# 7. مسارات السيرفر (Endpoints)
-# ---------------------------------------------------------
 
+# 7. Flask Endpoints
 @app.route("/", methods=["GET"])
 @app.route("/health", methods=["GET"])
 def health_check():
@@ -212,13 +196,10 @@ if bot_token:
         f"/{bot_token}",
         endpoint="bot_token_webhook",
         view_func=webhook,
-        methods=["POST", "GET"]
+        methods=["POST", "GET"],
     )
 
-# ---------------------------------------------------------
-# 8. تشغيل البوت (Polling للبيئة المحلية)
-# ---------------------------------------------------------
-
+# 8. Local Execution
 if __name__ == "__main__":
     if telegram_app:
         logger.info("🚀 جاري تشغيل البوت بنظام Polling...")
