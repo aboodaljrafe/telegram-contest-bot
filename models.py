@@ -1,15 +1,20 @@
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, BigInteger, Boolean, DateTime, JSON, ForeignKey
-from sqlalchemy.orm import declarative_base, relationship
 
-# إنشاء القاعدة الأساسية للنماذج بشكل يتوافق مع كافة الإصدارات
+# استدلال مرن لـ declarative_base لتفادي اختلاف إصدارات SQLAlchemy
+try:
+    from sqlalchemy.orm import declarative_base, relationship
+except ImportError:
+    from sqlalchemy.ext.declarative import declarative_base
+    from sqlalchemy.orm import relationship
+
 Base = declarative_base()
 
 
 class User(Base):
     __tablename__ = 'users'
 
-    id = Column(BigInteger, primary_key=True)  # معرف تلجرام (Telegram User ID)
+    id = Column(BigInteger, primary_key=True)
     username = Column(String(128), nullable=True)
     full_name = Column(String(256), nullable=True)
     total_points = Column(Integer, default=0)
